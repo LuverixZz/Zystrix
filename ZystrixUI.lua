@@ -20,7 +20,7 @@ local HEADER_H, SIDEBAR_W, SEC_H = 46, 150, 40
 local CTRL_BTN, CTRL_GAP = 36, 6
 local CTRL_W = CTRL_BTN * 3 + CTRL_GAP * 2
 local TITLE_X = 54
-local TOG_SIZE = 58
+local TOG_SIZE = 40
 local FONT, FONT_BOLD = Enum.Font.GothamMedium, Enum.Font.GothamBold
 local ROOT = "ZystrixUI"
 local ICON_DIR = ROOT .. "/icons"
@@ -568,6 +568,14 @@ local function onHover(gui, enter, leave)
 	connect(gui.MouseLeave, leave)
 end
 
+local function onClick(btn, fn)
+	connect(btn.InputBegan, function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 then fn() end
+	end)
+	connect(btn.Activated, function()
+		if UserInputService:GetLastInputType() == Enum.UserInputType.Touch then fn() end
+	end)
+end
 local function hoverRow(row, hit, key)
 	onHover(hit,
 		function() tween(row, { BackgroundColor3 = Theme.Hover }, 0.15) end,
@@ -605,17 +613,23 @@ function Section:AddToggle(o)
 	})
 
 	local obj = { Type = "Toggle", Value = o.Default and true or false }
-	local function kx(on, w) return on and (PW - PAD - w) or PAD end
+	local function kx(on) return on and (PW - PAD - KS) or PAD end
 	local function render(instant)
 		local on = obj.Value
-		local t = instant and 0 or 0.26
-		tween(pill, { BackgroundColor3 = on and Theme.Accent or Theme.Hover }, t, Enum.EasingStyle.Quad)
-		tween(pst, { Color = on and Theme.Accent or Theme.Stroke }, t, Enum.EasingStyle.Quad)
-		tween(knob, {
-			Position = UDim2.new(0, kx(on, KS), 0.5, 0),
-			Size = UDim2.fromOffset(KS, KS),
-			BackgroundColor3 = on and Theme.AccentText or Theme.SubText,
-		}, t, Enum.EasingStyle.Back)
+		local bg = on and Theme.Accent or Theme.Hover
+		local bd = on and Theme.Accent or Theme.Stroke
+		local kc = on and Theme.AccentText or Theme.SubText
+		local kp = UDim2.new(0, kx(on), 0.5, 0)
+		if instant then
+			pill.BackgroundColor3 = bg
+			pst.Color = bd
+			knob.BackgroundColor3 = kc
+			knob.Position = kp
+			return
+		end
+		tween(pill, { BackgroundColor3 = bg }, 0.12, Enum.EasingStyle.Quad)
+		tween(pst, { Color = bd }, 0.12, Enum.EasingStyle.Quad)
+		tween(knob, { Position = kp, BackgroundColor3 = kc }, 0.12, Enum.EasingStyle.Quad)
 	end
 	render(true)
 	Hooks[#Hooks + 1] = function() render(false) end
@@ -625,15 +639,7 @@ function Section:AddToggle(o)
 		if silent then quiet(self) else fire(self, o) end
 	end
 	function obj:Get() return self.Value end
-	connect(hit.MouseButton1Down, function()
-		tween(knob, {
-			Size = UDim2.fromOffset(KS + 6, KS),
-			Position = UDim2.new(0, kx(obj.Value, KS + 6), 0.5, 0),
-		}, 0.1)
-	end)
-	connect(hit.MouseButton1Up, function() render(false) end)
-	connect(hit.MouseLeave, function() render(false) end)
-	connect(hit.Activated, function() obj:Set(not obj.Value) end)
+	onClick(hit, function() obj:Set(not obj.Value) end)
 	register(obj, o)
 	return obj
 end
@@ -844,7 +850,7 @@ function Section:AddDropdown(o)
 			onHover(item,
 				function() tween(item, { BackgroundTransparency = 0 }, 0.12) end,
 				function() tween(item, { BackgroundTransparency = 1 }, 0.15) end)
-			connect(item.MouseButton1Click, function()
+			onClick(item, function()
 				if isNone then obj:Set(nil) else obj:Set(opt) end
 				closePopup()
 			end)
@@ -867,9 +873,9 @@ function Section:AddDropdown(o)
 			task.delay(0.18, function() popup:Destroy() end)
 		end
 		Library.OpenPopup = close
-		connect(blocker.MouseButton1Click, closePopup)
+		onClick(blocker, closePopup)
 	end
-	connect(hit.MouseButton1Click, function()
+	onClick(hit, function()
 		if isOpen then closePopup() else open() end
 	end)
 
@@ -937,9 +943,9 @@ function Section:AddButton(o)
 			tween(target, { BackgroundColor3 = base() }, 0.2)
 			tween(sc, { Scale = 1 }, 0.2, Enum.EasingStyle.Quad)
 		end)
-	connect(hit.MouseButton1Down, function() tween(sc, { Scale = 0.95 }, 0.08) end)
-	connect(hit.MouseButton1Up, function() tween(sc, { Scale = 1 }, 0.25, Enum.EasingStyle.Back) end)
-	connect(hit.MouseButton1Click, function()
+	connect(hit.MouseButton1Down, function() tween(sc, { Scale = 0.96 }, 0.06) end)
+	connect(hit.MouseButton1Up, function() tween(sc, { Scale = 1 }, 0.12, Enum.EasingStyle.Quad) end)
+	onClick(hit, function()
 		if o.Callback then task.spawn(o.Callback) end
 	end)
 	local obj = { Type = "Button" }
@@ -1011,7 +1017,7 @@ function Section:AddKeybind(o)
 		if not silent and o.Changed then task.spawn(o.Changed, self.Value) end
 	end
 	function obj:Get() return self.Value end
-	connect(btn.MouseButton1Click, function() setListening(true) end)
+	onClick(btn, function() setListening(true) end)
 	connect(UserInputService.InputBegan, function(i, gp)
 		if listening then
 			if i.UserInputType == Enum.UserInputType.Keyboard then
@@ -1139,7 +1145,7 @@ function Tab:AddSection(o)
 			end)
 		end
 	end
-	connect(hz.MouseButton1Click, function()
+	onClick(hz, function()
 		sec.Collapsed = not sec.Collapsed
 		tween(chev, { Rotation = sec.Collapsed and 0 or 180 }, 0.25)
 		closePopup()
@@ -1204,7 +1210,7 @@ function Window:_sub(parentTab)
 	parentTab.SubFrame = sf
 	parentTab.Chevron = makeIcon(parentTab.Button, "chevron", 12, "SubText", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0) })
 	local zh = hitZone(parentTab.Button, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -4, 0.5, 0), Size = UDim2.fromOffset(28, 26), Radius = 6 })
-	connect(zh.MouseButton1Click, function() Library._toggleSub(parentTab) end)
+	onClick(zh, function() Library._toggleSub(parentTab) end)
 	return sf
 end
 
@@ -1288,7 +1294,7 @@ function Window:AddTab(opts)
 		tab.Page, tab.Scroll, tab.Left, tab.Right = holder, scroll, left, right
 	end
 
-	connect(btn.MouseButton1Click, function()
+	onClick(btn, function()
 		if tab.Page then
 			self:SelectTab(tab)
 		else
@@ -1361,7 +1367,7 @@ function Window:SetMinimized(state)
 	if state == self.Minimized then return end
 	if self._minLock then return end
 	self._minLock = true
-	task.delay(0.38, function() self._minLock = false end)
+	task.delay(0.3, function() self._minLock = false end)
 
 	closePopup()
 	if SliderLock.Active then pcall(SliderLock.Active) end
@@ -1624,15 +1630,14 @@ function Library:CreateWindow(opts)
 	MainFrame = Main
 	self.Main = Main
 
-	local shadowSpec = { { 6, 0.9 }, { 14, 0.94 }, { 26, 0.97 } }
-	for idx, spec in ipairs(shadowSpec) do
+	for idx = 1, 6 do
 		local sh = new("Frame", {
-			Name = "Shadow" .. idx, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 8),
+			Name = "Shadow" .. idx, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 6),
 			Size = UDim2.fromScale(1, 1), ZIndex = 0, Parent = Main,
 		})
 		corner(sh, 12)
 		new("UIStroke", {
-			Color = Color3.new(0, 0, 0), Thickness = spec[1], Transparency = spec[2],
+			Color = Color3.new(0, 0, 0), Thickness = idx * 2.5, Transparency = 0.95,
 			ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = sh,
 		})
 	end
@@ -1644,7 +1649,7 @@ function Library:CreateWindow(opts)
 	TransFrames[#TransFrames + 1] = Canvas
 	self.Canvas = Canvas
 
-	local Outline = new("Frame", { Name = "Outline", Size = UDim2.fromScale(1, 1), ZIndex = 20, Parent = Main })
+	local Outline = new("Frame", { Name = "Outline", Size = UDim2.fromScale(1, 1), ZIndex = 20, Active = false, Parent = Main })
 	corner(Outline, 12)
 	stroke(Outline)
 
@@ -1680,7 +1685,7 @@ function Library:CreateWindow(opts)
 	})
 
 	local ctrls = new("Frame", {
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(CTRL_W, CTRL_BTN), Parent = Header,
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0, HEADER_H / 2), Size = UDim2.fromOffset(CTRL_W, CTRL_BTN), ZIndex = 30, Parent = Main,
 	})
 	new("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, CTRL_GAP), SortOrder = Enum.SortOrder.LayoutOrder,
@@ -1713,7 +1718,7 @@ function Library:CreateWindow(opts)
 			function()
 				tween(b, { BackgroundColor3 = hoverColor or Theme.Hover }, 0.15)
 				tween(bst, { Color = hoverColor or Theme.Accent }, 0.15)
-				tween(bsc, { Scale = 1.08 }, 0.18, Enum.EasingStyle.Back)
+				tween(bsc, { Scale = 1.08 }, 0.12, Enum.EasingStyle.Quad)
 				tint(hoverColor and Color3.new(1, 1, 1) or Theme.Text, 0.15)
 			end,
 			function()
@@ -1722,9 +1727,9 @@ function Library:CreateWindow(opts)
 				tween(bsc, { Scale = 1 }, 0.2)
 				tint(Theme.SubText, 0.2)
 			end)
-		connect(hit.MouseButton1Down, function() tween(bsc, { Scale = 0.9 }, 0.08) end)
-		connect(hit.MouseButton1Up, function() tween(bsc, { Scale = 1 }, 0.25, Enum.EasingStyle.Back) end)
-		connect(hit.MouseButton1Click, fn)
+		connect(hit.MouseButton1Down, function() tween(bsc, { Scale = 0.9 }, 0.06) end)
+		connect(hit.MouseButton1Up, function() tween(bsc, { Scale = 1 }, 0.12, Enum.EasingStyle.Quad) end)
+		onClick(hit, fn)
 		return b
 	end
 	ctrl(1, nil, nil, function() self:SetMinimized(not self.Minimized) end)
@@ -1788,22 +1793,24 @@ function Library:CreateWindow(opts)
 
 	if opts.ToggleButton ~= false then
 		local holder = new("Frame", {
-			Name = "ToggleButton", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -52, 0, 78),
+			Name = "ToggleButton", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -36, 0, 60),
 			Size = UDim2.fromOffset(TOG_SIZE, TOG_SIZE), Parent = Gui,
 		})
 		local ripple = new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1),
-			Bg = "Accent", BackgroundTransparency = 0.75, ZIndex = 1, Parent = holder,
+			Bg = "Accent", BackgroundTransparency = 1, ZIndex = 1, Parent = holder,
 		})
 		round(ripple)
-		TweenService:Create(ripple, TweenInfo.new(2.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, -1, false, 0.4), {
-			Size = UDim2.fromScale(1.75, 1.75), BackgroundTransparency = 1,
-		}):Play()
+		local function pulse()
+			ripple.Size = UDim2.fromScale(1, 1)
+			ripple.BackgroundTransparency = 0.55
+			tween(ripple, { Size = UDim2.fromScale(1.7, 1.7), BackgroundTransparency = 1 }, 0.5, Enum.EasingStyle.Quad)
+		end
 
 		local fb = new("Frame", { Name = "Body", Size = UDim2.fromScale(1, 1), Bg = "Sidebar", ZIndex = 2, Parent = holder })
 		round(fb)
 		gradient(fb, 150)
-		local fst = stroke(fb, "Accent", 2)
+		local fst = stroke(fb, "Accent", 1.5)
 		local ringGrad = new("UIGradient", {
 			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.9), NumberSequenceKeypoint.new(1, 0) }),
 			Parent = fst,
@@ -1811,13 +1818,13 @@ function Library:CreateWindow(opts)
 		TweenService:Create(ringGrad, TweenInfo.new(3.5, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1, false), { Rotation = 360 }):Play()
 
 		local inner = new("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -14, 1, -14),
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -10, 1, -10),
 			Bg = "Element", Parent = fb,
 		})
 		round(inner)
 		stroke(inner)
 		gradient(inner, 170)
-		local toggleCrown = makeIcon(inner, "crown", 24, "Accent", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0) })
+		local toggleCrown = makeIcon(inner, "crown", 18, "Accent", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0) })
 		local function syncCrown()
 			if headerCrown.Image ~= "" then
 				toggleCrown.Image = headerCrown.Image
@@ -1829,15 +1836,15 @@ function Library:CreateWindow(opts)
 		syncCrown()
 		connect(headerCrown:GetPropertyChangedSignal("Image"), syncCrown)
 		TweenService:Create(toggleCrown, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
-			Position = UDim2.new(0.5, 0, 0.5, -3),
+			Position = UDim2.new(0.5, 0, 0.5, -2),
 		}):Play()
 
 		local dot = new("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.85, 0, 0.85, 0), Size = UDim2.fromOffset(12, 12),
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.84, 0, 0.84, 0), Size = UDim2.fromOffset(9, 9),
 			BackgroundColor3 = Theme.Accent, ZIndex = 3, Parent = holder,
 		})
 		round(dot)
-		stroke(dot, "Sidebar", 2)
+		stroke(dot, "Sidebar", 1.5)
 		local function paintDot(instant)
 			tween(dot, { BackgroundColor3 = self.Visible and Theme.Accent or Theme.SubText }, instant and 0 or 0.25)
 		end
@@ -1848,15 +1855,16 @@ function Library:CreateWindow(opts)
 		local fsc = new("UIScale", { Parent = fb })
 		local fhit = hitZone(fb, { Size = UDim2.fromScale(1, 1), Radius = TOG_SIZE / 2 })
 		onHover(fhit,
-			function() tween(fsc, { Scale = 1.08 }, 0.2, Enum.EasingStyle.Back) end,
+			function() tween(fsc, { Scale = 1.08 }, 0.15, Enum.EasingStyle.Quad) end,
 			function() tween(fsc, { Scale = 1 }, 0.2) end)
 		connect(fhit.MouseButton1Down, function() tween(fsc, { Scale = 0.9 }, 0.08) end)
-		connect(fhit.MouseButton1Up, function() tween(fsc, { Scale = IS_TOUCH and 1 or 1.08 }, 0.25, Enum.EasingStyle.Back) end)
+		connect(fhit.MouseButton1Up, function() tween(fsc, { Scale = IS_TOUCH and 1 or 1.08 }, 0.12, Enum.EasingStyle.Quad) end)
 		draggable(fhit, holder, function()
 			self:Toggle()
+			pulse()
 			toggleCrown.Rotation = 0
-			tween(toggleCrown, { Rotation = 360 }, 0.5, Enum.EasingStyle.Back)
-			task.delay(0.55, function()
+			tween(toggleCrown, { Rotation = 360 }, 0.4, Enum.EasingStyle.Quint)
+			task.delay(0.45, function()
 				if toggleCrown.Parent then toggleCrown.Rotation = 0 end
 			end)
 		end)
