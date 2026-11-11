@@ -685,22 +685,26 @@ function Library:Notify(o)
 
 	local slot = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, LayoutOrder = NotifSerial, Parent = NotifHolder })
 	local mover = new("Frame", {
-		Position = UDim2.fromOffset(NOTIFY_OFF, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Parent = slot,
+		Position = UDim2.fromOffset(NOTIFY_OFF, 0), Size = UDim2.new(1, 0, 0, 64), Parent = slot,
 	})
 	NotifShadow = NotifShadow == nil and (shadowAsset() or false) or NotifShadow
 	if NotifShadow then
 		new("ImageLabel", {
-			Name = "Shadow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 5),
-			Size = UDim2.fromScale(1.1, 1.5), Image = NotifShadow, ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = 0.5,
+			Name = "Shadow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 3),
+			Size = UDim2.new(1, 28, 1, 28), Image = NotifShadow, ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = 0.8,
 			ScaleType = Enum.ScaleType.Slice,
 			SliceCenter = Rect.new(Gen.shadowCenter, Gen.shadowCenter, Gen.shadowCenter + 2, Gen.shadowCenter + 2),
-			SliceScale = 0.55, ZIndex = 0, Parent = mover,
+			SliceScale = 0.6, ZIndex = 0, Parent = mover,
 		})
 	end
 	local toast = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", Parent = mover })
 	corner(toast, 12)
 	stroke(toast)
 	gradient(toast, 215)
+	toast:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		local h = toast.AbsoluteSize.Y
+		if h > 0 then mover.Size = UDim2.new(1, 0, 0, h) end
+	end)
 	padding(toast, 14, 11, 14, 12)
 	listLayout(toast, 7)
 
