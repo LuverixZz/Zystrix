@@ -35,6 +35,7 @@ local IS_TOUCH = UserInputService.TouchEnabled and not UserInputService.MouseEna
 local USE_CANVAS_HIT = false
 local HIT_W = 120
 local TAP_SLOP = 18
+local onClick, onHover
 local DRAG_SLOP = IS_TOUCH and 16 or 6
 
 local Themes = {
@@ -87,7 +88,7 @@ for k, v in pairs(Themes.Monochrome) do Theme[k] = v end
 
 local Library = {
 	Flags = {}, Options = {}, Connections = {}, Windows = {},
-	Version = "1.6.0", ThemeName = "Monochrome",
+	Version = "1.7.0", ThemeName = "Monochrome",
 	ThemeList = { "Monochrome", "Crimson", "Ocean", "Emerald", "Violet", "Amber" },
 	Transparency = 0.1, ConfigFolder = ROOT, Listening = false,
 }
@@ -439,6 +440,8 @@ local Gen = (function()
 		link = { { "R", 7.8, 12, 5, 3.4, 3.4, 1.9 }, { "R", 16.2, 12, 5, 3.4, 3.4, 1.9 }, { "l", 9.5, 12, 14.5, 12, 1.9 } },
 		eye = { { "e", 12, 12, 9.2, 5.6, 2 }, { "c", 12, 12, 2.7 } },
 		key = { { "o", 7.5, 12, 4, 2 }, { "l", 11.5, 12, 21, 12, 2 }, { "l", 17.5, 12, 17.5, 16, 1.9 }, { "l", 20.8, 12, 20.8, 15, 1.9 } },
+			warn = { { "l", 12, 4.5, 3.8, 19, 2 }, { "l", 12, 4.5, 20.2, 19, 2 }, { "l", 3.8, 19, 20.2, 19, 2 }, { "l", 12, 10, 12, 14.2, 2 }, { "c", 12, 16.9, 1.15 } },
+			cross = { { "l", 6, 6, 18, 18, 2.4 }, { "l", 18, 6, 6, 18, 2.4 } },
 	}
 
 	return G
@@ -460,7 +463,7 @@ for name, glyph in pairs({
 	toggle = "T", slider = "=", list = "-", input = "I", click = "o", grid = "#", columns = "|", pulse = "~",
 	signal = "l", user = "U", contrast = "o", edit = "/", folder = "F", hash = "#", up = "^", down = "v",
 	sun = "*", percent = "%", bolt = "!", check = "+", clock = "o", plus = "+", info = "i", link = "@",
-	eye = "o", key = "K",
+	eye = "o", key = "K", warn = "!", cross = "x",
 }) do
 	Icons[name] = { "proc:" .. name, glyph }
 end
@@ -668,55 +671,136 @@ function Library:SetTransparency(v)
 	for _, f in ipairs(TransFrames) do tween(f, { BackgroundTransparency = v }, 0.25) end
 end
 
-local NotifHolder = new("Frame", { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -14, 1, -14), Size = UDim2.fromOffset(260, 400), Parent = Gui })
-new("UIListLayout", {
-	Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder,
-	VerticalAlignment = Enum.VerticalAlignment.Bottom, HorizontalAlignment = Enum.HorizontalAlignment.Right, Parent = NotifHolder,
-})
+local NOTIFY_W, NOTIFY_MAX = 272, 4
+local NotifSide, NotifOrder, NotifSerial, NotifShadow = 1, 1, 0, nil
+local NotifToasts = {}
+local NotifLayouts = {
+	BottomRight = { anchor = Vector2.new(1, 1), pos = UDim2.new(1, -14, 1, -14), v = Enum.VerticalAlignment.Bottom, h = Enum.HorizontalAlignment.Right, side = 1, order = 1 },
+	TopRight = { anchor = Vector2.new(1, 0), pos = UDim2.new(1, -14, 0, 96), v = Enum.VerticalAlignment.Top, h = Enum.HorizontalAlignment.Right, side = 1, order = -1 },
+	BottomLeft = { anchor = Vector2.new(0, 1), pos = UDim2.new(0, 14, 1, -14), v = Enum.VerticalAlignment.Bottom, h = Enum.HorizontalAlignment.Left, side = -1, order = 1 },
+	TopLeft = { anchor = Vector2.new(0, 0), pos = UDim2.new(0, 14, 0, 60), v = Enum.VerticalAlignment.Top, h = Enum.HorizontalAlignment.Left, side = -1, order = -1 },
+}
+local NotifTypes = {
+	info = { icon = "info" },
+	success = { icon = "check", color = Color3.fromRGB(74, 190, 120) },
+	warning = { icon = "warn", color = Color3.fromRGB(235, 170, 60) },
+	error = { icon = "cross", color = Color3.fromRGB(226, 72, 80) },
+}
+Library.NotifyPositions = { "BottomRight", "TopRight", "BottomLeft", "TopLeft" }
+Library.NotifyPosition = "BottomRight"
+
+local NotifHolder = new("Frame", { Size = UDim2.fromOffset(NOTIFY_W, 440), Parent = Gui })
+local NotifLayout = new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = NotifHolder })
+
+function Library:SetNotifyPosition(name)
+	local p = NotifLayouts[name]
+	if not p then return false end
+	Library.NotifyPosition = name
+	NotifSide, NotifOrder = p.side, p.order
+	NotifHolder.AnchorPoint = p.anchor
+	NotifHolder.Position = p.pos
+	NotifLayout.VerticalAlignment = p.v
+	NotifLayout.HorizontalAlignment = p.h
+	return true
+end
+Library:SetNotifyPosition("BottomRight")
 
 function Library:Notify(o)
 	o = o or {}
-	local dur = o.Duration or 4
-	local slot = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Parent = NotifHolder })
-	local toast = new("Frame", { Position = UDim2.new(1, 60, 0, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", Parent = slot })
-	corner(toast, 12)
-	stroke(toast)
-	gradient(toast, 215)
-	padding(toast, 12, 10, 12, 11)
-	listLayout(toast, 6)
+	local kind = NotifTypes[string.lower(tostring(o.Type or "info"))] or NotifTypes.info
+	local color = kind.color
+	local dur = tonumber(o.Duration) or 4
+	local side = NotifSide
+	while #NotifToasts >= NOTIFY_MAX do NotifToasts[1]() end
+	if NotifShadow == nil then NotifShadow = shadowAsset() or false end
+	NotifSerial += 1
 
-	local head = new("Frame", { Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 1, Parent = toast })
-	iconTile(head, o.Icon or "info", 24, 14, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0) })
+	local slot = new("Frame", { Size = UDim2.new(1, 0, 0, 0), LayoutOrder = NotifSerial * NotifOrder, Parent = NotifHolder })
+	local holder = new("Frame", { Size = UDim2.fromScale(1, 1), Position = UDim2.fromOffset(side * (NOTIFY_W + 40), 0), Parent = slot })
+	local shadow
+	if NotifShadow then
+		shadow = new("ImageLabel", {
+			Name = "Shadow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 4),
+			Size = UDim2.new(1, 28, 1, 28), Image = NotifShadow, ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = 1,
+			ScaleType = Enum.ScaleType.Slice, SliceCenter = Rect.new(Gen.shadowCenter, Gen.shadowCenter, Gen.shadowCenter + 2, Gen.shadowCenter + 2),
+			SliceScale = 0.6, ZIndex = 0, Parent = holder,
+		})
+	end
+	local toast = new("CanvasGroup", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", GroupTransparency = 1, Parent = holder,
+	})
+	corner(toast, 10)
+	stroke(toast)
+
+	local stripeProps = {
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(0, 3, 1, 0), ZIndex = 2, Parent = toast,
+	}
+	if color then stripeProps.BackgroundColor3 = color else stripeProps.Bg = "Accent" end
+	local stripe = new("Frame", stripeProps)
+
+	local img = makeIcon(toast, o.Icon or kind.icon, 16, (not color) and "Accent" or nil, { Position = UDim2.fromOffset(16, 11), ZIndex = 2 })
+	if color then
+		img.ImageColor3 = color
+		local g = img:FindFirstChild("Glyph")
+		if g then g.TextColor3 = color end
+	end
+
+	local body = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, ZIndex = 2, Parent = toast })
+	padding(body, 42, 11, 38, 12)
+	listLayout(body, 2)
 	new("TextLabel", {
-		Text = o.Title or "Notification", Font = FONT_BOLD, Fg = "Text", Position = UDim2.fromOffset(32, 0),
-		Size = UDim2.new(1, -32, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
+		Text = o.Title or "Notification", Font = FONT_BOLD, Fg = "Text", Size = UDim2.new(1, 0, 0, 20),
+		TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1, Parent = body,
 	})
 	if o.Content and o.Content ~= "" then
 		new("TextLabel", {
 			Text = o.Content, Fg = "SubText", TextSize = 12, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY,
-			TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 2, Parent = toast,
+			TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 2, Parent = body,
 		})
 	end
-	local bar = new("Frame", { Size = UDim2.new(1, 0, 0, 3), Bg = "Stroke", LayoutOrder = 3, Parent = toast })
-	corner(bar, 2)
-	local fill = new("Frame", { Size = UDim2.fromScale(1, 1), Bg = "Accent", Parent = bar })
-	corner(fill, 2)
 
-	tween(toast, { Position = UDim2.fromScale(0, 0) }, 0.45, Enum.EasingStyle.Back)
-	tween(fill, { Size = UDim2.fromScale(0, 1) }, dur, Enum.EasingStyle.Linear)
-	task.delay(dur, function()
-		if not slot.Parent then return end
-		tween(toast, { Position = UDim2.new(1, 60, 0, 0) }, 0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-		task.wait(0.3)
-		if not slot.Parent then return end
-		local h = slot.AbsoluteSize.Y
-		slot.AutomaticSize = AutoNone
-		slot.Size = UDim2.new(1, 0, 0, h)
-		tween(slot, { Size = UDim2.new(1, 0, 0, 0) }, 0.2)
-		task.wait(0.2)
-		slot:Destroy()
-		prune()
-	end)
+	local dismissed = false
+	local function dismiss()
+		if dismissed then return end
+		dismissed = true
+		for i = #NotifToasts, 1, -1 do
+			if NotifToasts[i] == dismiss then table.remove(NotifToasts, i) end
+		end
+		tween(holder, { Position = UDim2.fromOffset(side * (NOTIFY_W + 40), 0) }, 0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		tween(toast, { GroupTransparency = 1 }, 0.25)
+		if shadow then tween(shadow, { ImageTransparency = 1 }, 0.25) end
+		task.delay(0.3, function()
+			if not slot.Parent then return end
+			tween(slot, { Size = UDim2.new(1, 0, 0, 0) }, 0.2)
+			task.delay(0.2, function()
+				if slot.Parent then slot:Destroy() end
+				prune()
+			end)
+		end)
+	end
+	NotifToasts[#NotifToasts + 1] = dismiss
+
+	local hit, zone = hitZone(toast, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 1), Size = UDim2.fromOffset(34, 34), ZIndex = 3 })
+	local xIcon = makeIcon(zone, "cross", 10, "SubText", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+	onHover(hit, function() tintIcon(xIcon, Theme.Text) end, function() tintIcon(xIcon, Theme.SubText) end)
+	onClick(hit, function() dismiss() end, true)
+
+	local function sync()
+		if dismissed then return end
+		local h = toast.AbsoluteSize.Y
+		if h > 0 then slot.Size = UDim2.new(1, 0, 0, h) end
+	end
+	toast:GetPropertyChangedSignal("AbsoluteSize"):Connect(sync)
+	sync()
+
+	tween(holder, { Position = UDim2.fromOffset(0, 0) }, 0.42, Enum.EasingStyle.Quint)
+	tween(toast, { GroupTransparency = 0 }, 0.25)
+	if shadow then tween(shadow, { ImageTransparency = 0.72 }, 0.3) end
+	if dur > 0 then
+		tween(stripe, { Size = UDim2.new(0, 3, 0, 0) }, dur, Enum.EasingStyle.Linear)
+		task.delay(dur, dismiss)
+	end
+	return { Dismiss = dismiss }
 end
 
 function Library:ListConfigs()
@@ -829,13 +913,13 @@ local function rowIcon(row, spec, cy)
 	return 26
 end
 
-local function onHover(gui, enter, leave)
+function onHover(gui, enter, leave)
 	if IS_TOUCH then return end
 	connect(gui.MouseEnter, enter)
 	connect(gui.MouseLeave, leave)
 end
 
-local function onClick(btn, fn, eager)
+function onClick(btn, fn, eager)
 	local last = 0
 	local function fire()
 		local now = os.clock()
@@ -1784,6 +1868,11 @@ function Window:CreateSettingsTab(opts)
 	ap:AddToggle({ Name = "Show User", Icon = "user", Default = true, Flag = "UI_ShowUser", Callback = function(v) self:SetUserVisible(v) end })
 	ap:AddToggle({ Name = "Show FPS", Icon = "pulse", Default = false, Flag = "UI_ShowFPS", Callback = function(v) self.ShowFPS = v self:_statsRefresh() end })
 	ap:AddToggle({ Name = "Show Ping", Icon = "signal", Default = false, Flag = "UI_ShowPing", Callback = function(v) self.ShowPing = v self:_statsRefresh() end })
+	ap:AddDropdown({ Name = "Notify", Icon = "list", Options = Library.NotifyPositions, Default = Library.NotifyPosition, AllowNone = false, Flag = "UI_NotifyPos", Callback = function(v)
+		if v == Library.NotifyPosition then return end
+		Library:SetNotifyPosition(v)
+		Library:Notify({ Title = "Notifications", Content = "Position: " .. v, Type = "success" })
+	end })
 
 	local kb = tab:AddSection({ Name = "Keybinds", Icon = "keyboard", Side = "Left" })
 	kb:AddKeybind({ Name = "Toggle UI", Icon = "keyboard", Default = self.ToggleKey, Flag = "UI_ToggleKey", Changed = function(k) if k then self.ToggleKey = k end end })
@@ -1796,10 +1885,10 @@ function Window:CreateSettingsTab(opts)
 	cf:AddButton({ Name = "Save Config", Icon = "save", Callback = function()
 		local ok, name = Library:SaveConfig(nameBox:Get())
 		if ok then
-			Library:Notify({ Title = "Config", Content = "Saved: " .. name, Icon = "save" })
+			Library:Notify({ Title = "Config", Content = "Saved: " .. name, Type = "success" })
 			refreshList()
 		else
-			Library:Notify({ Title = "Config", Content = HasFS and "Config name is empty." or "Your executor does not support writefile.", Icon = "info" })
+			Library:Notify({ Title = "Config", Content = HasFS and "Config name is empty." or "Your executor does not support writefile.", Type = "warning" })
 		end
 	end })
 	sel = cf:AddDropdown({ Name = "Select Config", Icon = "folder", Options = Library:ListConfigs(), Placeholder = "No configs..." })
@@ -2245,7 +2334,7 @@ if env.ZystrixUI_NoDemo or env.MystrixUI_NoDemo then return Library end
 local Window = Library:CreateWindow({
 	Title = "ZystrixUI Tester",
 	Subtitle = "Component playground",
-	Version = "v1.6",
+	Version = "v1.7",
 	ConfigFolder = "ZystrixTester",
 	ToggleKey = Enum.KeyCode.J,
 })
@@ -2369,7 +2458,7 @@ it:AddTextbox({ Name = "Numbers Only", Icon = "hash", Placeholder = "0 - 100", F
 		echo:Set("Echo", "Valid number: " .. math.clamp(n, 0, 100))
 	else
 		echo:Set("Echo", "\"" .. v .. "\" is not a number")
-		Library:Notify({ Title = "Input", Content = "Enter a valid number.", Duration = 2 })
+		Library:Notify({ Title = "Input", Content = "Enter a valid number.", Duration = 2, Type = "warning" })
 	end
 end })
 it:AddTextbox({ Name = "Long Text", Icon = "edit", Placeholder = "Truncation test...", Default = "A very long piece of text to test clipping inside the input box", Flag = "I_Long" })
@@ -2439,6 +2528,15 @@ end })
 local nt = Buttons:AddSection({ Name = "Notifications", Icon = "info", Side = "Right" })
 nt:AddButton({ Name = "Short Notification", Icon = "info", Callback = function()
 	Library:Notify({ Title = "Short", Content = "Hello!", Duration = 3 })
+end })
+nt:AddButton({ Name = "Success", Icon = "check", Callback = function()
+	Library:Notify({ Title = "Success", Content = "Operation completed.", Type = "success" })
+end })
+nt:AddButton({ Name = "Warning", Icon = "warn", Callback = function()
+	Library:Notify({ Title = "Warning", Content = "Your ping is high.", Type = "warning" })
+end })
+nt:AddButton({ Name = "Error", Icon = "cross", Callback = function()
+	Library:Notify({ Title = "Error", Content = "Failed to load the config.", Type = "error" })
 end })
 nt:AddButton({ Name = "Long Notification", Icon = "clock", Callback = function()
 	Library:Notify({
