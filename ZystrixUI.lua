@@ -675,7 +675,7 @@ new("UIListLayout", {
 	Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder,
 	VerticalAlignment = Enum.VerticalAlignment.Bottom, HorizontalAlignment = Enum.HorizontalAlignment.Right, Parent = NotifHolder,
 })
-local NotifToasts, NotifSerial = {}, 0
+local NotifToasts, NotifSerial, NotifShadow = {}, 0, nil
 
 function Library:Notify(o)
 	o = o or {}
@@ -684,25 +684,31 @@ function Library:Notify(o)
 	NotifSerial += 1
 
 	local slot = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, LayoutOrder = NotifSerial, Parent = NotifHolder })
-	local toast = new("Frame", {
-		Position = UDim2.fromOffset(NOTIFY_OFF, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY,
-		Bg = "Card", BackgroundTransparency = 0.1, Parent = slot,
+	local mover = new("Frame", {
+		Position = UDim2.fromOffset(NOTIFY_OFF, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Parent = slot,
 	})
+	NotifShadow = NotifShadow == nil and (shadowAsset() or false) or NotifShadow
+	if NotifShadow then
+		new("ImageLabel", {
+			Name = "Shadow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 5),
+			Size = UDim2.fromScale(1.1, 1.5), Image = NotifShadow, ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = 0.5,
+			ScaleType = Enum.ScaleType.Slice,
+			SliceCenter = Rect.new(Gen.shadowCenter, Gen.shadowCenter, Gen.shadowCenter + 2, Gen.shadowCenter + 2),
+			SliceScale = 0.55, ZIndex = 0, Parent = mover,
+		})
+	end
+	local toast = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", Parent = mover })
 	corner(toast, 12)
-	local st = stroke(toast)
-	st.Transparency = 0.15
-	new("UIGradient", {
-		Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(185, 185, 185)),
-		Transparency = NumberSequence.new(0, 0.22), Rotation = 150, Parent = toast,
-	})
-	padding(toast, 12, 10, 12, 11)
-	listLayout(toast, 6)
+	stroke(toast)
+	gradient(toast, 215)
+	padding(toast, 14, 11, 14, 12)
+	listLayout(toast, 7)
 
-	local head = new("Frame", { Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 1, Parent = toast })
-	iconTile(head, o.Icon or "info", 24, 14, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0) })
+	local head = new("Frame", { Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 1, Parent = toast })
+	iconTile(head, o.Icon or "info", 26, 15, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0) })
 	new("TextLabel", {
-		Text = o.Title or "Notification", Font = FONT_BOLD, Fg = "Text", Position = UDim2.fromOffset(32, 0),
-		Size = UDim2.new(1, -32, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
+		Text = o.Title or "Notification", Font = FONT_BOLD, TextSize = 14, Fg = "Text", Position = UDim2.fromOffset(36, 0),
+		Size = UDim2.new(1, -36, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
 	})
 	if o.Content and o.Content ~= "" then
 		new("TextLabel", {
@@ -710,10 +716,11 @@ function Library:Notify(o)
 			TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 2, Parent = toast,
 		})
 	end
-	local bar = new("Frame", { Size = UDim2.new(1, 0, 0, 3), Bg = "Stroke", LayoutOrder = 3, Parent = toast })
+	local bar = new("Frame", { Size = UDim2.new(1, 0, 0, 4), Bg = "Stroke", LayoutOrder = 3, Parent = toast })
 	corner(bar, 2)
 	local fill = new("Frame", { Size = UDim2.fromScale(1, 1), Bg = "Accent", Parent = bar })
 	corner(fill, 2)
+	gradient(fill, 0)
 
 	local dismissed, hit = false, nil
 	local function dismiss()
@@ -723,7 +730,7 @@ function Library:Notify(o)
 		for i = #NotifToasts, 1, -1 do
 			if NotifToasts[i] == dismiss then table.remove(NotifToasts, i) end
 		end
-		tween(toast, { Position = UDim2.fromOffset(NOTIFY_OFF, 0) }, 0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		tween(mover, { Position = UDim2.fromOffset(NOTIFY_OFF, 0) }, 0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 		task.delay(0.26, function()
 			if not slot.Parent then return end
 			local h = slot.AbsoluteSize.Y
@@ -741,11 +748,19 @@ function Library:Notify(o)
 	hit = new("TextButton", { Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = slot })
 	onClick(hit, dismiss)
 	if not IS_TOUCH then
-		connect(hit.MouseEnter, function() tween(toast, { BackgroundTransparency = 0 }, 0.15) end)
-		connect(hit.MouseLeave, function() tween(toast, { BackgroundTransparency = 0.1 }, 0.2) end)
+		connect(hit.MouseEnter, function()
+			if dismissed then return end
+			tween(toast, { BackgroundColor3 = Theme.Hover }, 0.15)
+			tween(mover, { Position = UDim2.fromOffset(-4, 0) }, 0.18, Enum.EasingStyle.Quad)
+		end)
+		connect(hit.MouseLeave, function()
+			if dismissed then return end
+			tween(toast, { BackgroundColor3 = Theme.Card }, 0.2)
+			tween(mover, { Position = UDim2.fromOffset(0, 0) }, 0.2, Enum.EasingStyle.Quad)
+		end)
 	end
 
-	tween(toast, { Position = UDim2.fromOffset(0, 0) }, 0.45, Enum.EasingStyle.Back)
+	tween(mover, { Position = UDim2.fromOffset(0, 0) }, 0.45, Enum.EasingStyle.Back)
 	if dur > 0 then
 		tween(fill, { Size = UDim2.fromScale(0, 1) }, dur, Enum.EasingStyle.Linear)
 		task.delay(dur, dismiss)
