@@ -35,6 +35,7 @@ local IS_TOUCH = UserInputService.TouchEnabled and not UserInputService.MouseEna
 local USE_CANVAS_HIT = false
 local HIT_W = 120
 local TAP_SLOP = 18
+local onClick
 local DRAG_SLOP = IS_TOUCH and 16 or 6
 
 local Themes = {
@@ -668,20 +669,32 @@ function Library:SetTransparency(v)
 	for _, f in ipairs(TransFrames) do tween(f, { BackgroundTransparency = v }, 0.25) end
 end
 
-local NotifHolder = new("Frame", { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -14, 1, -14), Size = UDim2.fromOffset(260, 400), Parent = Gui })
+local NOTIFY_W, NOTIFY_MAX, NOTIFY_OFF = 260, 4, 300
+local NotifHolder = new("Frame", { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -14, 1, -14), Size = UDim2.fromOffset(NOTIFY_W, 440), Parent = Gui })
 new("UIListLayout", {
 	Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder,
 	VerticalAlignment = Enum.VerticalAlignment.Bottom, HorizontalAlignment = Enum.HorizontalAlignment.Right, Parent = NotifHolder,
 })
+local NotifToasts, NotifSerial = {}, 0
 
 function Library:Notify(o)
 	o = o or {}
-	local dur = o.Duration or 4
-	local slot = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Parent = NotifHolder })
-	local toast = new("Frame", { Position = UDim2.new(1, 60, 0, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", Parent = slot })
+	local dur = tonumber(o.Duration) or 4
+	while #NotifToasts >= NOTIFY_MAX do NotifToasts[1]() end
+	NotifSerial += 1
+
+	local slot = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, LayoutOrder = NotifSerial, Parent = NotifHolder })
+	local toast = new("Frame", {
+		Position = UDim2.fromOffset(NOTIFY_OFF, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY,
+		Bg = "Card", BackgroundTransparency = 0.1, Parent = slot,
+	})
 	corner(toast, 12)
-	stroke(toast)
-	gradient(toast, 215)
+	local st = stroke(toast)
+	st.Transparency = 0.15
+	new("UIGradient", {
+		Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(185, 185, 185)),
+		Transparency = NumberSequence.new(0, 0.22), Rotation = 150, Parent = toast,
+	})
 	padding(toast, 12, 10, 12, 11)
 	listLayout(toast, 6)
 
@@ -702,21 +715,42 @@ function Library:Notify(o)
 	local fill = new("Frame", { Size = UDim2.fromScale(1, 1), Bg = "Accent", Parent = bar })
 	corner(fill, 2)
 
-	tween(toast, { Position = UDim2.fromScale(0, 0) }, 0.45, Enum.EasingStyle.Back)
-	tween(fill, { Size = UDim2.fromScale(0, 1) }, dur, Enum.EasingStyle.Linear)
-	task.delay(dur, function()
-		if not slot.Parent then return end
-		tween(toast, { Position = UDim2.new(1, 60, 0, 0) }, 0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-		task.wait(0.3)
-		if not slot.Parent then return end
-		local h = slot.AbsoluteSize.Y
-		slot.AutomaticSize = AutoNone
-		slot.Size = UDim2.new(1, 0, 0, h)
-		tween(slot, { Size = UDim2.new(1, 0, 0, 0) }, 0.2)
-		task.wait(0.2)
-		slot:Destroy()
-		prune()
-	end)
+	local dismissed, hit = false, nil
+	local function dismiss()
+		if dismissed then return end
+		dismissed = true
+		if hit then hit.Active = false hit.Visible = false end
+		for i = #NotifToasts, 1, -1 do
+			if NotifToasts[i] == dismiss then table.remove(NotifToasts, i) end
+		end
+		tween(toast, { Position = UDim2.fromOffset(NOTIFY_OFF, 0) }, 0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		task.delay(0.26, function()
+			if not slot.Parent then return end
+			local h = slot.AbsoluteSize.Y
+			slot.AutomaticSize = AutoNone
+			slot.Size = UDim2.new(1, 0, 0, h)
+			tween(slot, { Size = UDim2.new(1, 0, 0, 0) }, 0.18)
+			task.delay(0.18, function()
+				if slot.Parent then slot:Destroy() end
+				prune()
+			end)
+		end)
+	end
+	NotifToasts[#NotifToasts + 1] = dismiss
+
+	hit = new("TextButton", { Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = slot })
+	onClick(hit, dismiss)
+	if not IS_TOUCH then
+		connect(hit.MouseEnter, function() tween(toast, { BackgroundTransparency = 0 }, 0.15) end)
+		connect(hit.MouseLeave, function() tween(toast, { BackgroundTransparency = 0.1 }, 0.2) end)
+	end
+
+	tween(toast, { Position = UDim2.fromOffset(0, 0) }, 0.45, Enum.EasingStyle.Back)
+	if dur > 0 then
+		tween(fill, { Size = UDim2.fromScale(0, 1) }, dur, Enum.EasingStyle.Linear)
+		task.delay(dur, dismiss)
+	end
+	return { Dismiss = dismiss }
 end
 
 function Library:ListConfigs()
@@ -835,7 +869,7 @@ local function onHover(gui, enter, leave)
 	connect(gui.MouseLeave, leave)
 end
 
-local function onClick(btn, fn, eager)
+function onClick(btn, fn, eager)
 	local last = 0
 	local function fire()
 		local now = os.clock()
