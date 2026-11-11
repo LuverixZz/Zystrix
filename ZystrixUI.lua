@@ -943,10 +943,22 @@ function Section:AddSlider(o)
 	local row = makeRow(self, 48)
 	local sh = rowIcon(row, o.Icon, 17)
 	rowLabel(row, o.Name, UDim2.new(1, -86, 0, 26), sh).Position = UDim2.fromOffset(12 + sh, 4)
-	local valueLbl = new("TextLabel", {
-		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 4), Size = UDim2.fromOffset(66, 26),
-		TextXAlignment = Enum.TextXAlignment.Right, Fg = "SubText", TextSize = 12, Parent = row,
-	})
+	local valueLbl
+	local vst
+	if o.Input == false then
+		valueLbl = new("TextLabel", {
+			AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 4), Size = UDim2.fromOffset(66, 26),
+			TextXAlignment = Enum.TextXAlignment.Right, Fg = "SubText", TextSize = 12, Parent = row,
+		})
+	else
+		valueLbl = new("TextBox", {
+			AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 2), Size = UDim2.fromOffset(62, 22),
+			Bg = "Hover", Fg = "Text", Ph = "SubText", TextSize = 12, TextXAlignment = Enum.TextXAlignment.Center,
+			ClipsDescendants = true, Parent = row,
+		})
+		corner(valueLbl, 6)
+		vst = stroke(valueLbl)
+	end
 	local track = new("Frame", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 1, -13), Size = UDim2.new(1, -24, 0, 6), Bg = "Stroke", Parent = row })
 	round(track)
 	local fill = new("Frame", { Size = UDim2.fromScale(0, 1), Bg = "Accent", Parent = track })
@@ -954,7 +966,7 @@ function Section:AddSlider(o)
 	local knob = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(1, 0.5), Size = UDim2.fromOffset(14, 14), Bg = "Text", Parent = fill })
 	round(knob)
 	gradient(knob, 190)
-	local hit = hitZone(row, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 30) })
+	local hit = hitZone(row, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 24) })
 
 	local obj = { Type = "Slider", Value = min }
 	local function render()
@@ -1047,6 +1059,22 @@ function Section:AddSlider(o)
 		end
 	end)
 
+	if o.Input ~= false then
+		connect(valueLbl.Focused, function()
+			tween(vst, { Color = Theme.Accent }, 0.15)
+			valueLbl.Text = string.format("%." .. decimals .. "f", obj.Value)
+		end)
+		connect(valueLbl.FocusLost, function()
+			tween(vst, { Color = Theme.Stroke }, 0.2)
+			local n = tonumber((valueLbl.Text:gsub("[^%d%.%-]", "")))
+			if n then
+				local before = obj.Value
+				obj:Set(n, true)
+				if obj.Value ~= before then fire(obj, o) end
+			end
+			render()
+		end)
+	end
 	obj:Set(o.Default or min, true)
 	register(obj, o)
 	return obj
@@ -2292,7 +2320,7 @@ end
 
 local Sliders = Window:AddTab({
 	Name = "Slider", Icon = "slider", Group = "TESTER",
-	Description = "Slider test: drag, tap on the track, decimal values, negative range, suffix.",
+	Description = "Slider test: drag, tap on the track, or type a value in the small box.",
 })
 local si = Sliders:AddSection({ Name = "Integer", Icon = "hash", Side = "Left" })
 local lastInt = si:AddLabel({ Title = "Last value", Text = "-" })
