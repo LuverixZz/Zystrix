@@ -88,14 +88,14 @@ for k, v in pairs(Themes.Monochrome) do Theme[k] = v end
 
 local Library = {
 	Flags = {}, Options = {}, Connections = {}, Windows = {},
-	Version = "1.7.0", ThemeName = "Monochrome",
+	Version = "1.6.0", ThemeName = "Monochrome",
 	ThemeList = { "Monochrome", "Crimson", "Ocean", "Emerald", "Violet", "Amber" },
-	Transparency = 0.1, CardGlass = 0, RowGlass = 0, Background = "None", ConfigFolder = ROOT, Listening = false,
+	Transparency = 0.1, ConfigFolder = ROOT, Listening = false,
 }
 
 local SliderLock = { Active = nil }
 
-local Bound, Hooks, TransFrames, GlassFrames, GlassRows = {}, {}, {}, {}, {}
+local Bound, Hooks, TransFrames = {}, {}, {}
 
 local function connect(signal, fn)
 	local c = signal:Connect(fn)
@@ -862,10 +862,6 @@ end
 local function makeRow(sec, height, bgKey)
 	local row = new("Frame", { Size = UDim2.new(1, 0, 0, height or 36), Bg = bgKey or "Element", LayoutOrder = sec:_next(), Parent = sec.Content })
 	corner(row, 8)
-	if not bgKey or bgKey == "Element" then
-		row.BackgroundTransparency = Library.RowGlass
-		GlassRows[#GlassRows + 1] = row
-	end
 	return row
 end
 
@@ -1271,33 +1267,18 @@ function Section:AddButton(o)
 	if primary then
 		gradient(row, 200)
 		target = row
-		local grp = new("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(0, 24), AutomaticSize = AutoX, Parent = row,
-		})
-		new("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center,
-			VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 9), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grp,
+		lbl = new("TextLabel", {
+			Text = o.Name or "Button", Fg = "Background", Font = FONT_BOLD, Size = UDim2.fromScale(1, 1),
+			TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
 		})
 		if o.Icon then
-			makeIcon(grp, o.Icon, 16, "Background", { LayoutOrder = 1 })
+			makeIcon(row, o.Icon, 16, "Background", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 0) })
 		end
-		lbl = new("TextLabel", {
-			Text = o.Name or "Button", Fg = "Background", Font = FONT_BOLD, Size = UDim2.fromOffset(0, 24), AutomaticSize = AutoX,
-			TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 2, Parent = grp,
-		})
 		hit = hitZone(row, { Size = UDim2.fromScale(1, 1) })
 	else
 		local hasIcon = o.Icon ~= nil
 		local hasText = o.ButtonText ~= nil or not hasIcon
-		local btnText = o.ButtonText or "Run"
-		local pw
-		if hasIcon and hasText then
-			pw = math.clamp(#btnText * 7 + 14 + 8 + 24, 76, 150)
-		elseif hasIcon then
-			pw = 36
-		else
-			pw = math.clamp(#btnText * 7 + 24, 54, 140)
-		end
+		local pw = (hasIcon and hasText) and 80 or (hasIcon and 36 or 54)
 		lbl = rowLabel(row, o.Name, UDim2.new(1, -(pw + 24), 1, 0))
 		target = new("Frame", {
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(pw, 28),
@@ -1306,25 +1287,18 @@ function Section:AddButton(o)
 		corner(target, 8)
 		stroke(target)
 		gradient(target, 185)
-		if hasIcon and hasText then
-			local grp = new("Frame", {
-				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(0, 28), AutomaticSize = AutoX, Parent = target,
-			})
-			new("UIListLayout", {
-				FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center,
-				VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grp,
-			})
-			makeIcon(grp, o.Icon, 14, "Accent", { LayoutOrder = 1 })
+		if hasIcon then
+			if hasText then
+				makeIcon(target, o.Icon, 14, "Accent", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 9, 0.5, 0) })
+			else
+				makeIcon(target, o.Icon, 16, "Accent", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+			end
+		end
+		if hasText then
 			new("TextLabel", {
-				Text = btnText, Fg = "Text", TextSize = 12, Font = FONT_BOLD, Size = UDim2.fromOffset(0, 28), AutomaticSize = AutoX,
-				TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 2, Parent = grp,
-			})
-		elseif hasIcon then
-			makeIcon(target, o.Icon, 16, "Accent", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
-		else
-			new("TextLabel", {
-				Text = btnText, Fg = "Text", TextSize = 12, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Center,
-				Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.AtEnd, Parent = target,
+				Text = o.ButtonText or "Run", Fg = "Text", TextSize = 12, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Center,
+				Position = UDim2.fromOffset(hasIcon and 14 or 0, 0), Size = UDim2.new(1, hasIcon and -14 or 0, 1, 0),
+				TextTruncate = Enum.TextTruncate.AtEnd, Parent = target,
 			})
 		end
 		hit = hitZone(row, {
@@ -1447,8 +1421,7 @@ end
 
 function Section:AddLabel(o)
 	if type(o) == "string" then o = { Title = o } end
-	local row = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Element", BackgroundTransparency = Library.RowGlass, LayoutOrder = self:_next(), Parent = self.Content })
-	GlassRows[#GlassRows + 1] = row
+	local row = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Element", LayoutOrder = self:_next(), Parent = self.Content })
 	corner(row, 8)
 	padding(row, 12, 9, 12, 9)
 	listLayout(row, 3)
@@ -1496,10 +1469,9 @@ function Tab:AddSection(o)
 	local col = right and self.Right or self.Left
 
 	local card = new("Frame", {
-		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", BackgroundTransparency = Library.CardGlass,
-		LayoutOrder = self:_next(), ClipsDescendants = true, Parent = col,
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", LayoutOrder = self:_next(),
+		ClipsDescendants = true, Parent = col,
 	})
-	GlassFrames[#GlassFrames + 1] = card
 	corner(card, 12)
 	stroke(card)
 	gradient(card, 225)
@@ -1856,374 +1828,12 @@ function Window:LoadAutoConfig()
 	end
 end
 
-local Background = (function()
-	local M = {}
-	M.__index = M
-	M.List = { "None", "Binary Rain", "Hex Rain", "ASCII Rain", "Luau Code", "Starfield", "Embers", "Orbs", "Dot Wave" }
-
-	local CODE_FONT = Enum.Font.Code
-	local RAIN_SETS = {
-		["Binary Rain"] = "01",
-		["Hex Rain"] = "0123456789ABCDEF",
-		["ASCII Rain"] = "@#$%&*+=?/|{}[];:~^",
-	}
-	local KEYWORDS = { "local", "function", "end", "if", "then", "else", "return", "for", "while", "do", "in", "not", "and", "or" }
-	local SNIPPETS = {
-		'local Players = game:GetService("Players")',
-		'for i = 1, 10 do task.wait(0.1) end',
-		'local ok, err = pcall(function() end)',
-		'RunService.Heartbeat:Connect(function(dt)',
-		'if player.Character then return end',
-		'local function fire(remote, ...) remote:FireServer(...) end',
-		'tween:Play() tween.Completed:Wait()',
-		'while task.wait() do print("zystrix") end',
-		'local part = Instance.new("Part", workspace)',
-		'return setmetatable({}, { __index = self })',
-		'humanoid.WalkSpeed = 24',
-		'print(#Players:GetPlayers())',
-		'local t = os.clock() - start',
-		'table.insert(list, { id = 1, name = "zx" })',
-		'workspace.Gravity = 196.2',
-		'local root = char:WaitForChild("HumanoidRootPart")',
-		'root.CFrame = root.CFrame * CFrame.new(0, 5, 0)',
-		'for _, v in ipairs(workspace:GetChildren()) do',
-		'game:GetService("RunService").RenderStepped:Wait()',
-		'local gui = Instance.new("ScreenGui")',
-	}
-
-	local function hex(c)
-		return string.format("#%02x%02x%02x", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
-	end
-
-	local function highlight(src)
-		local acc, str = hex(Theme.Accent), hex(Theme.Text)
-		local out, pos = {}, 1
-		local function plain(seg)
-			for _, kw in ipairs(KEYWORDS) do
-				seg = seg:gsub("%f[%w_]" .. kw .. "%f[^%w_]", '<font color="' .. acc .. '">' .. kw .. "</font>")
-			end
-			return seg
-		end
-		while true do
-			local a = src:find('"', pos, true)
-			if not a then
-				out[#out + 1] = plain(src:sub(pos))
-				break
-			end
-			local b = src:find('"', a + 1, true) or #src
-			out[#out + 1] = plain(src:sub(pos, a - 1))
-			out[#out + 1] = '<font color="' .. str .. '">' .. src:sub(a, b) .. "</font>"
-			pos = b + 1
-		end
-		return table.concat(out)
-	end
-
-	function M:_tr(v)
-		return math.max(0, 1 - v * self.opacity)
-	end
-
-	local function rollText(self, it)
-		local set, n, buf = self.set, #self.set, {}
-		for i = 1, it.n do
-			local k = math.random(n)
-			buf[i] = set:sub(k, k)
-		end
-		buf[it.n] = '<font color="#ffffff">' .. buf[it.n] .. "</font>"
-		it.gui.Text = table.concat(buf, "\n")
-	end
-
-	local BUILD, STEP, APPLY = {}, {}, {}
-
-	local function buildRain(self, name)
-		self.set = RAIN_SETS[name]
-		local n = IS_TOUCH and 20 or 32
-		for i = 1, n do
-			local fs = ({ 10, 12, 12, 14, 16 })[math.random(5)]
-			local lbl = new("TextLabel", {
-				Font = CODE_FONT, TextSize = fs, Fg = "Accent", AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.fromOffset(fs + 2, 14 * fs),
-				TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, LineHeight = 1, RichText = true, Parent = self.layer,
-			})
-			new("UIGradient", {
-				Rotation = 90,
-				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.72, 0.6), NumberSequenceKeypoint.new(1, 0) }),
-				Parent = lbl,
-			})
-			local it = {
-				gui = lbl, n = 14, fs = fs, x = (i - 0.5) / n + (math.random() - 0.5) * 0.4 / n, y = -math.random() * 1.2,
-				spd = (0.16 + math.random() * 0.26) * (0.6 + fs / 20), base = 0.55 + fs / 40 + math.random() * 0.2,
-			}
-			rollText(self, it)
-			lbl.Position = UDim2.fromScale(it.x, it.y)
-			lbl.TextTransparency = self:_tr(it.base)
-			self.items[i] = it
-		end
-	end
-	BUILD["Binary Rain"] = function(self) buildRain(self, "Binary Rain") end
-	BUILD["Hex Rain"] = function(self) buildRain(self, "Hex Rain") end
-	BUILD["ASCII Rain"] = function(self) buildRain(self, "ASCII Rain") end
-
-	local function stepRain(self, dt)
-		local items = self.items
-		for i = 1, #items do
-			local it = items[i]
-			it.y = it.y + it.spd * dt
-			if it.y > 1.02 then
-				it.y = -0.45 - math.random() * 0.5
-				it.spd = (0.16 + math.random() * 0.26) * (0.6 + it.fs / 20)
-				it.base = 0.55 + it.fs / 40 + math.random() * 0.2
-				it.gui.TextTransparency = self:_tr(it.base)
-				rollText(self, it)
-			end
-			it.gui.Position = UDim2.fromScale(it.x, it.y)
-		end
-		self.acc = self.acc + dt
-		if self.acc > 0.07 and #items > 0 then
-			self.acc = 0
-			rollText(self, items[math.random(#items)])
-		end
-	end
-	STEP["Binary Rain"], STEP["Hex Rain"], STEP["ASCII Rain"] = stepRain, stepRain, stepRain
-	local function applyRain(self)
-		for _, it in ipairs(self.items) do it.gui.TextTransparency = self:_tr(it.base) end
-	end
-	APPLY["Binary Rain"], APPLY["Hex Rain"], APPLY["ASCII Rain"] = applyRain, applyRain, applyRain
-
-	BUILD["Luau Code"] = function(self)
-		local n = IS_TOUCH and 5 or 8
-		for i = 1, n do
-			local lbl = new("TextLabel", {
-				Font = CODE_FONT, TextSize = 12, Fg = "SubText", RichText = true, Size = UDim2.fromOffset(440, 16),
-				TextWrapped = false, MaxVisibleGraphemes = 0, TextTransparency = 1, Parent = self.layer,
-			})
-			self.items[i] = { gui = lbl, slot = i, state = "wait", t = -math.random() * 2, len = 0, shown = 0, hold = 2, base = 0.55 }
-		end
-		self.nslots = n
-	end
-	STEP["Luau Code"] = function(self, dt)
-		for _, it in ipairs(self.items) do
-			local g = it.gui
-			if it.state == "wait" then
-				it.t = it.t + dt
-				if it.t >= 0 then
-					local src = SNIPPETS[math.random(#SNIPPETS)]
-					it.len, it.shown, it.t, it.state = #src, 0, 0, "type"
-					it.hold = 2 + math.random() * 2.5
-					g.Text = highlight(src)
-					g.Position = UDim2.new(0.03 + math.random() * 0.5, 0, (it.slot - 0.5 + (math.random() - 0.5) * 0.5) / self.nslots, 0)
-					g.MaxVisibleGraphemes = 0
-					g.TextTransparency = self:_tr(it.base)
-				end
-			elseif it.state == "type" then
-				it.shown = it.shown + dt * 32
-				g.MaxVisibleGraphemes = math.floor(it.shown)
-				if it.shown >= it.len then
-					g.MaxVisibleGraphemes = -1
-					it.state, it.t = "hold", 0
-				end
-			elseif it.state == "hold" then
-				it.t = it.t + dt
-				if it.t >= it.hold then it.state, it.t = "fade", 0 end
-			else
-				it.t = it.t + dt / 0.8
-				local f = math.min(it.t, 1)
-				local from = self:_tr(it.base)
-				g.TextTransparency = from + (1 - from) * f
-				if it.t >= 1 then
-					it.state, it.t = "wait", -(0.3 + math.random() * 1.6)
-					g.MaxVisibleGraphemes = 0
-					g.TextTransparency = 1
-				end
-			end
-		end
-	end
-	APPLY["Luau Code"] = function(self)
-		for _, it in ipairs(self.items) do
-			if it.state == "type" or it.state == "hold" then it.gui.TextTransparency = self:_tr(it.base) end
-		end
-	end
-
-	BUILD["Starfield"] = function(self)
-		local n = IS_TOUCH and 45 or 80
-		for i = 1, n do
-			local s = ({ 1, 2, 2, 3 })[math.random(4)]
-			local f = new("Frame", { Bg = "Text", Size = UDim2.fromOffset(s, s), AnchorPoint = Vector2.new(0.5, 0.5), Parent = self.layer })
-			round(f)
-			self.items[i] = {
-				gui = f, x = math.random(), y = math.random(), spd = 0.006 + s * 0.012 + math.random() * 0.008,
-				ph = math.random() * 6.28, rate = 1 + math.random() * 2.2, base = 0.35 + s * 0.2,
-			}
-		end
-	end
-	STEP["Starfield"] = function(self, dt)
-		local items, t = self.items, self.t
-		for i = 1, #items do
-			local it = items[i]
-			it.x = it.x - it.spd * dt
-			if it.x < -0.02 then
-				it.x = 1.02
-				it.y = math.random()
-			end
-			it.gui.Position = UDim2.fromScale(it.x, it.y)
-			if (self.fr + i) % 2 == 0 then
-				it.gui.BackgroundTransparency = self:_tr(it.base * (0.55 + 0.45 * math.sin(t * it.rate + it.ph)))
-			end
-		end
-	end
-
-	BUILD["Embers"] = function(self)
-		local n = IS_TOUCH and 22 or 38
-		for i = 1, n do
-			local s = math.random(3, 8)
-			local f = new("Frame", { Bg = "Accent", Size = UDim2.fromOffset(s, s), AnchorPoint = Vector2.new(0.5, 0.5), Parent = self.layer })
-			round(f)
-			self.items[i] = {
-				gui = f, x = math.random(), y = math.random(), spd = 0.05 + math.random() * 0.14, amp = 0.012 + math.random() * 0.025,
-				sp = 0.8 + math.random() * 1.4, ph = math.random() * 6.28, base = 0.5 + math.random() * 0.4,
-			}
-		end
-	end
-	STEP["Embers"] = function(self, dt)
-		local items, t = self.items, self.t
-		for i = 1, #items do
-			local it = items[i]
-			it.y = it.y - it.spd * dt
-			if it.y < -0.05 then
-				it.y = 1.05
-				it.x = math.random()
-			end
-			local life = math.sin(math.pi * math.clamp(1 - it.y, 0, 1))
-			it.gui.Position = UDim2.fromScale(it.x + math.sin(t * it.sp + it.ph) * it.amp, it.y)
-			it.gui.BackgroundTransparency = self:_tr(it.base * life)
-		end
-	end
-
-	BUILD["Orbs"] = function(self)
-		local radii = { 210, 260, 170 }
-		for o = 1, 3 do
-			local orb = { a = 0.18 + math.random() * 0.12, b = 0.15 + math.random() * 0.12, p = math.random() * 6.28, q = math.random() * 6.28, layers = {} }
-			for l = 1, 7 do
-				local d = radii[o] * (1 - (l - 1) * 0.13)
-				local f = new("Frame", { Bg = "Accent", Size = UDim2.fromOffset(d, d), AnchorPoint = Vector2.new(0.5, 0.5), Parent = self.layer })
-				round(f)
-				orb.layers[l] = f
-				self.items[#self.items + 1] = { gui = f, orb = orb, base = 0.085 }
-			end
-		end
-	end
-	STEP["Orbs"] = function(self, dt)
-		local t = self.t
-		for _, it in ipairs(self.items) do
-			local o = it.orb
-			it.gui.Position = UDim2.fromScale(0.5 + 0.4 * math.sin(t * o.a + o.p), 0.5 + 0.36 * math.sin(t * o.b + o.q))
-		end
-	end
-	APPLY["Orbs"] = function(self)
-		for _, it in ipairs(self.items) do it.gui.BackgroundTransparency = self:_tr(it.base) end
-	end
-
-	BUILD["Dot Wave"] = function(self)
-		local cols, rows = IS_TOUCH and 12 or 18, IS_TOUCH and 7 or 10
-		self.cols, self.rows = cols, rows
-		for r = 1, rows do
-			for c = 1, cols do
-				local f = new("Frame", {
-					Bg = "SubText", Size = UDim2.fromOffset(3, 3), AnchorPoint = Vector2.new(0.5, 0.5),
-					Position = UDim2.fromScale((c - 0.5) / cols, (r - 0.5) / rows), Parent = self.layer,
-				})
-				round(f)
-				self.items[#self.items + 1] = { gui = f, c = c, r = r }
-			end
-		end
-	end
-	STEP["Dot Wave"] = function(self, dt)
-		self.acc = self.acc + dt
-		if self.acc < 0.05 then return end
-		self.acc = 0
-		local t = self.t
-		for _, it in ipairs(self.items) do
-			local w = 0.5 + 0.5 * math.sin(t * 1.8 - (it.c * 0.55 + it.r * 0.45))
-			it.gui.BackgroundTransparency = self:_tr(0.12 + 0.6 * w)
-		end
-	end
-
-	function M:_clear()
-		self.items = {}
-		self.layer:ClearAllChildren()
-		prune()
-	end
-
-	function M:Set(name)
-		self:_clear()
-		self.name = name
-		self.t, self.acc, self.fr = 0, 0, 0
-		local build = BUILD[name]
-		if build then build(self) end
-		self.layer.Visible = build ~= nil
-	end
-
-	function M:SetOpacity(v)
-		self.opacity = math.clamp(tonumber(v) or 0.6, 0.05, 1)
-		local ap = APPLY[self.name]
-		if ap then ap(self) end
-	end
-
-	function M:_step(dt)
-		local s = STEP[self.name]
-		if not s or not self.isActive() then return end
-		dt = math.min(dt, 0.1)
-		self.t = self.t + dt
-		self.fr = self.fr + 1
-		s(self, dt)
-	end
-
-	function M.new(layer, isActive)
-		local self = setmetatable({ layer = layer, isActive = isActive, name = "None", opacity = 0.6, items = {}, t = 0, acc = 0, fr = 0 }, M)
-		connect(RunService.Heartbeat, function(dt) self:_step(dt) end)
-		return self
-	end
-
-	return M
-end)()
-
-function Window:SetBackground(name)
-	name = name or "None"
-	local valid = false
-	for _, n in ipairs(Background.List) do
-		if n == name then valid = true end
-	end
-	if not valid then return false end
-	Library.Background = name
-	self.BG:Set(name)
-	local on = name ~= "None"
-	Library.CardGlass = on and 0.3 or 0
-	Library.RowGlass = on and 0.45 or 0
-	for _, f in ipairs(GlassFrames) do tween(f, { BackgroundTransparency = Library.CardGlass }, 0.25) end
-	for _, f in ipairs(GlassRows) do tween(f, { BackgroundTransparency = Library.RowGlass }, 0.25) end
-	local opt = Library.Options.UI_Transparency
-	if on and Library.Transparency < 0.35 then
-		self._prevTrans = self._prevTrans or Library.Transparency
-		Library:SetTransparency(0.35)
-		if opt then opt:Set(0.35, true) end
-	elseif not on and self._prevTrans then
-		local back = self._prevTrans
-		self._prevTrans = nil
-		Library:SetTransparency(back)
-		if opt then opt:Set(back, true) end
-	end
-	return true
-end
-
-function Window:SetBackgroundOpacity(v)
-	self.BG:SetOpacity(v)
-end
 function Window:CreateSettingsTab(opts)
 	opts = opts or {}
 	local tab = self:AddTab({ Name = "Settings", Icon = "settings", Group = opts.Group, Description = opts.Description })
 	local ap = tab:AddSection({ Name = "Appearance", Icon = "palette", Side = "Left" })
 	ap:AddDropdown({ Name = "Theme", Icon = "palette", Options = Library.ThemeList, Default = Library.ThemeName, AllowNone = false, Flag = "UI_Theme", Callback = function(v) Library:SetTheme(v) end })
-	ap:AddSlider({ Name = "Transparency", Icon = "contrast", Min = 0, Max = 0.8, Increment = 0.01, Default = Library.Transparency, Flag = "UI_Transparency", Callback = function(v) self._prevTrans = nil Library:SetTransparency(v) end })
-	ap:AddDropdown({ Name = "Background", Icon = "grid", Options = Background.List, Default = Library.Background, AllowNone = false, Flag = "UI_Background", Callback = function(v) self:SetBackground(v) end })
-	ap:AddSlider({ Name = "BG Opacity", Icon = "sun", Min = 0.1, Max = 1, Increment = 0.05, Default = 0.6, Flag = "UI_BgOpacity", Callback = function(v) self:SetBackgroundOpacity(v) end })
+	ap:AddSlider({ Name = "Transparency", Icon = "contrast", Min = 0, Max = 0.8, Increment = 0.01, Default = Library.Transparency, Flag = "UI_Transparency", Callback = function(v) Library:SetTransparency(v) end })
 	ap:AddToggle({ Name = "Show User", Icon = "user", Default = true, Flag = "UI_ShowUser", Callback = function(v) self:SetUserVisible(v) end })
 	ap:AddToggle({ Name = "Show FPS", Icon = "pulse", Default = false, Flag = "UI_ShowFPS", Callback = function(v) self.ShowFPS = v self:_statsRefresh() end })
 	ap:AddToggle({ Name = "Show Ping", Icon = "signal", Default = false, Flag = "UI_ShowPing", Callback = function(v) self.ShowPing = v self:_statsRefresh() end })
@@ -2418,9 +2028,6 @@ function Library:CreateWindow(opts)
 	corner(Canvas, 12)
 	TransFrames[#TransFrames + 1] = Canvas
 	self.Canvas = Canvas
-
-	local BgLayer = new("Frame", { Name = "Background", Size = UDim2.fromScale(1, 1), ZIndex = 0, ClipsDescendants = true, Visible = false, Active = false, Parent = Canvas })
-	self.BG = Background.new(BgLayer, function() return self.Visible and not self.Minimized end)
 
 	local Outline = new("Frame", { Name = "Outline", Size = UDim2.fromScale(1, 1), ZIndex = 20, Active = false, Parent = Main })
 	corner(Outline, 12)
