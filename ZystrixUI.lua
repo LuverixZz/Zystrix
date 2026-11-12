@@ -90,12 +90,12 @@ local Library = {
 	Flags = {}, Options = {}, Connections = {}, Windows = {},
 	Version = "1.7.0", ThemeName = "Monochrome",
 	ThemeList = { "Monochrome", "Crimson", "Ocean", "Emerald", "Violet", "Amber" },
-	Transparency = 0.1, CardGlass = 0, Background = "None", ConfigFolder = ROOT, Listening = false,
+	Transparency = 0.1, CardGlass = 0, RowGlass = 0, Background = "None", ConfigFolder = ROOT, Listening = false,
 }
 
 local SliderLock = { Active = nil }
 
-local Bound, Hooks, TransFrames, GlassFrames = {}, {}, {}, {}
+local Bound, Hooks, TransFrames, GlassFrames, GlassRows = {}, {}, {}, {}, {}
 
 local function connect(signal, fn)
 	local c = signal:Connect(fn)
@@ -862,6 +862,10 @@ end
 local function makeRow(sec, height, bgKey)
 	local row = new("Frame", { Size = UDim2.new(1, 0, 0, height or 36), Bg = bgKey or "Element", LayoutOrder = sec:_next(), Parent = sec.Content })
 	corner(row, 8)
+	if not bgKey or bgKey == "Element" then
+		row.BackgroundTransparency = Library.RowGlass
+		GlassRows[#GlassRows + 1] = row
+	end
 	return row
 end
 
@@ -1267,18 +1271,33 @@ function Section:AddButton(o)
 	if primary then
 		gradient(row, 200)
 		target = row
-		lbl = new("TextLabel", {
-			Text = o.Name or "Button", Fg = "Background", Font = FONT_BOLD, Size = UDim2.fromScale(1, 1),
-			TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
+		local grp = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(0, 24), AutomaticSize = AutoX, Parent = row,
+		})
+		new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 9), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grp,
 		})
 		if o.Icon then
-			makeIcon(row, o.Icon, 16, "Background", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 0) })
+			makeIcon(grp, o.Icon, 16, "Background", { LayoutOrder = 1 })
 		end
+		lbl = new("TextLabel", {
+			Text = o.Name or "Button", Fg = "Background", Font = FONT_BOLD, Size = UDim2.fromOffset(0, 24), AutomaticSize = AutoX,
+			TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 2, Parent = grp,
+		})
 		hit = hitZone(row, { Size = UDim2.fromScale(1, 1) })
 	else
 		local hasIcon = o.Icon ~= nil
 		local hasText = o.ButtonText ~= nil or not hasIcon
-		local pw = (hasIcon and hasText) and 80 or (hasIcon and 36 or 54)
+		local btnText = o.ButtonText or "Run"
+		local pw
+		if hasIcon and hasText then
+			pw = math.clamp(#btnText * 7 + 14 + 8 + 24, 76, 150)
+		elseif hasIcon then
+			pw = 36
+		else
+			pw = math.clamp(#btnText * 7 + 24, 54, 140)
+		end
 		lbl = rowLabel(row, o.Name, UDim2.new(1, -(pw + 24), 1, 0))
 		target = new("Frame", {
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(pw, 28),
@@ -1287,18 +1306,25 @@ function Section:AddButton(o)
 		corner(target, 8)
 		stroke(target)
 		gradient(target, 185)
-		if hasIcon then
-			if hasText then
-				makeIcon(target, o.Icon, 14, "Accent", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 9, 0.5, 0) })
-			else
-				makeIcon(target, o.Icon, 16, "Accent", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
-			end
-		end
-		if hasText then
+		if hasIcon and hasText then
+			local grp = new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(0, 28), AutomaticSize = AutoX, Parent = target,
+			})
+			new("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center,
+				VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grp,
+			})
+			makeIcon(grp, o.Icon, 14, "Accent", { LayoutOrder = 1 })
 			new("TextLabel", {
-				Text = o.ButtonText or "Run", Fg = "Text", TextSize = 12, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Center,
-				Position = UDim2.fromOffset(hasIcon and 14 or 0, 0), Size = UDim2.new(1, hasIcon and -14 or 0, 1, 0),
-				TextTruncate = Enum.TextTruncate.AtEnd, Parent = target,
+				Text = btnText, Fg = "Text", TextSize = 12, Font = FONT_BOLD, Size = UDim2.fromOffset(0, 28), AutomaticSize = AutoX,
+				TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 2, Parent = grp,
+			})
+		elseif hasIcon then
+			makeIcon(target, o.Icon, 16, "Accent", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		else
+			new("TextLabel", {
+				Text = btnText, Fg = "Text", TextSize = 12, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Center,
+				Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.AtEnd, Parent = target,
 			})
 		end
 		hit = hitZone(row, {
@@ -1421,7 +1447,8 @@ end
 
 function Section:AddLabel(o)
 	if type(o) == "string" then o = { Title = o } end
-	local row = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Element", LayoutOrder = self:_next(), Parent = self.Content })
+	local row = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Element", BackgroundTransparency = Library.RowGlass, LayoutOrder = self:_next(), Parent = self.Content })
+	GlassRows[#GlassRows + 1] = row
 	corner(row, 8)
 	padding(row, 12, 9, 12, 9)
 	listLayout(row, 3)
@@ -1892,7 +1919,7 @@ local Background = (function()
 	end
 
 	function M:_tr(v)
-		return 1 - v * self.opacity
+		return math.max(0, 1 - v * self.opacity)
 	end
 
 	local function rollText(self, it)
@@ -1901,6 +1928,7 @@ local Background = (function()
 			local k = math.random(n)
 			buf[i] = set:sub(k, k)
 		end
+		buf[it.n] = '<font color="#ffffff">' .. buf[it.n] .. "</font>"
 		it.gui.Text = table.concat(buf, "\n")
 	end
 
@@ -1910,9 +1938,10 @@ local Background = (function()
 		self.set = RAIN_SETS[name]
 		local n = IS_TOUCH and 20 or 32
 		for i = 1, n do
+			local fs = ({ 10, 12, 12, 14, 16 })[math.random(5)]
 			local lbl = new("TextLabel", {
-				Font = CODE_FONT, TextSize = 12, Fg = "Accent", AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.fromOffset(14, 14 * 12),
-				TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, LineHeight = 1, Parent = self.layer,
+				Font = CODE_FONT, TextSize = fs, Fg = "Accent", AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.fromOffset(fs + 2, 14 * fs),
+				TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, LineHeight = 1, RichText = true, Parent = self.layer,
 			})
 			new("UIGradient", {
 				Rotation = 90,
@@ -1920,8 +1949,8 @@ local Background = (function()
 				Parent = lbl,
 			})
 			local it = {
-				gui = lbl, n = 14, x = (i - 0.5) / n + (math.random() - 0.5) * 0.4 / n, y = -math.random() * 1.2,
-				spd = 0.16 + math.random() * 0.26, base = 0.4 + math.random() * 0.5,
+				gui = lbl, n = 14, fs = fs, x = (i - 0.5) / n + (math.random() - 0.5) * 0.4 / n, y = -math.random() * 1.2,
+				spd = (0.16 + math.random() * 0.26) * (0.6 + fs / 20), base = 0.55 + fs / 40 + math.random() * 0.2,
 			}
 			rollText(self, it)
 			lbl.Position = UDim2.fromScale(it.x, it.y)
@@ -1940,8 +1969,8 @@ local Background = (function()
 			it.y = it.y + it.spd * dt
 			if it.y > 1.02 then
 				it.y = -0.45 - math.random() * 0.5
-				it.spd = 0.16 + math.random() * 0.26
-				it.base = 0.4 + math.random() * 0.5
+				it.spd = (0.16 + math.random() * 0.26) * (0.6 + it.fs / 20)
+				it.base = 0.55 + it.fs / 40 + math.random() * 0.2
 				it.gui.TextTransparency = self:_tr(it.base)
 				rollText(self, it)
 			end
@@ -2166,8 +2195,10 @@ function Window:SetBackground(name)
 	Library.Background = name
 	self.BG:Set(name)
 	local on = name ~= "None"
-	Library.CardGlass = on and 0.2 or 0
+	Library.CardGlass = on and 0.3 or 0
+	Library.RowGlass = on and 0.45 or 0
 	for _, f in ipairs(GlassFrames) do tween(f, { BackgroundTransparency = Library.CardGlass }, 0.25) end
+	for _, f in ipairs(GlassRows) do tween(f, { BackgroundTransparency = Library.RowGlass }, 0.25) end
 	local opt = Library.Options.UI_Transparency
 	if on and Library.Transparency < 0.35 then
 		self._prevTrans = self._prevTrans or Library.Transparency
