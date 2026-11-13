@@ -1916,8 +1916,8 @@ function Window:CreateDashboard(opts)
 	tab.Dashboard = D
 
 	local GOOD, WARN, BAD = Color3.fromRGB(74, 190, 120), Color3.fromRGB(235, 170, 60), Color3.fromRGB(226, 72, 80)
-	local TILE_H, GAP, SAMPLES = 46, 6, 36
-	local scales, glows = {}, {}
+	local MONO, SAMPLES, ROW_H = Enum.Font.Code, 40, 28
+	local blocks = {}
 	local born = os.clock()
 	local ts = game:GetService("TeleportService")
 
@@ -1932,72 +1932,43 @@ function Window:CreateDashboard(opts)
 		return string.format("%02d:%02d:%02d", math.floor(sec / 3600), math.floor(sec / 60) % 60, sec % 60)
 	end
 
-	local function panel(parent, size, pos)
-		local f = new("Frame", { Bg = "Card", Size = size, Position = pos or UDim2.new(), ClipsDescendants = true, Parent = parent })
-		corner(f, 12)
-		stroke(f)
-		gradient(f, 225)
-		scales[#scales + 1] = new("UIScale", { Parent = f })
-		return f
-	end
-
-	local function head(card, icon, text, rightW)
-		local h = new("Frame", { Size = UDim2.new(1, 0, 0, 36), Parent = card })
-		iconTile(h, icon, 22, 13, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0) })
-		new("TextLabel", {
-			Text = text, Font = FONT_BOLD, Fg = "Text", Position = UDim2.fromOffset(40, 0), Size = UDim2.new(1, -(46 + (rightW or 24)), 1, 0),
-			TextTruncate = Enum.TextTruncate.AtEnd, Parent = h,
-		})
-		return h
-	end
-
-	local function glow(parent, fade, rot)
-		local g = new("Frame", { Bg = "Accent", BackgroundTransparency = 0.84, Size = UDim2.fromScale(1, 1), Parent = parent })
-		corner(g, 12)
-		local gr = new("UIGradient", { Transparency = fade, Rotation = rot, Parent = g })
-		glows[#glows + 1] = gr
+	local function block(h, order)
+		local g = new("CanvasGroup", { Size = UDim2.new(1, 0, 0, h), LayoutOrder = order, Parent = scroll })
+		blocks[#blocks + 1] = g
 		return g
 	end
 
-	local function press(gui)
-		local sc = gui:FindFirstChild("PressScale")
-		if not sc then sc = new("UIScale", { Name = "PressScale", Parent = gui }) end
-		sc.Scale = 0.95
-		tween(sc, { Scale = 1 }, 0.35, Enum.EasingStyle.Back)
+	local function heading(parent, text, pos, size)
+		local f = new("Frame", { Position = pos or UDim2.new(), Size = size or UDim2.new(1, 0, 0, 20), Parent = parent })
+		new("TextLabel", { Text = string.upper(text), Font = MONO, TextSize = 10, Fg = "SubText", Size = UDim2.new(1, 0, 0, 14), Parent = f })
+		new("Frame", { Bg = "Stroke", Position = UDim2.fromOffset(0, 17), Size = UDim2.new(1, 0, 0, 1), Parent = f })
+		return f
 	end
 
-	local function clickable(gui, fn, key)
-		local hit = hitZone(gui, { ZIndex = 6 })
-		onHover(hit,
-			function() tween(gui, { BackgroundColor3 = Theme.Hover }, 0.15) end,
-			function() tween(gui, { BackgroundColor3 = Theme[key or "Element"] }, 0.2) end)
-		onClick(hit, function()
-			press(gui)
-			fn()
-		end)
-		return hit
-	end
-
-	local function tile(parent, title, value, order)
-		local f = new("Frame", { Bg = "Element", LayoutOrder = order or 0, Parent = parent })
-		corner(f, 9)
-		stroke(f)
-		gradient(f, 205)
-		new("TextLabel", {
-			Text = title, Fg = "SubText", TextSize = 10, Position = UDim2.fromOffset(10, 5), Size = UDim2.new(1, -26, 0, 12),
-			TextTruncate = Enum.TextTruncate.AtEnd, Parent = f,
+	local function listRow(parent, order, label, value, o)
+		o = o or {}
+		local r = new("Frame", { Bg = "Hover", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, ROW_H), LayoutOrder = order, Parent = parent })
+		local left = 0
+		if o.Icon then
+			makeIcon(r, o.Icon, 14, "SubText", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 2, 0.5, 0) })
+			left = 24
+		end
+		local name = new("TextLabel", {
+			Text = label, Fg = o.Name or "SubText", TextSize = 12, Position = UDim2.fromOffset(left, 0), Size = UDim2.new(0.55, -left, 1, 0),
+			TextTruncate = Enum.TextTruncate.AtEnd, Parent = r,
 		})
 		local val = new("TextLabel", {
-			Text = value or "-", Font = FONT_BOLD, Fg = "Text", TextSize = 14, Position = UDim2.fromOffset(10, 17),
-			Size = UDim2.new(1, -20, 0, 18), TextTruncate = Enum.TextTruncate.AtEnd, Parent = f,
+			Text = value or "-", Font = MONO, TextSize = o.Small and 10 or 12, Fg = o.Small and "SubText" or "Text", AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -2, 0, 0), Size = UDim2.new(0.45, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Right,
+			TextTruncate = Enum.TextTruncate.AtEnd, Parent = r,
 		})
-		local dot = new("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -9, 0, 8), Size = UDim2.fromOffset(6, 6), BackgroundColor3 = GOOD, Visible = false, Parent = f })
-		round(dot)
-		local track = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 10, 1, -5), Size = UDim2.new(1, -20, 0, 3), Bg = "Stroke", Visible = false, Parent = f })
-		round(track)
-		local fill = new("Frame", { Size = UDim2.fromScale(0, 1), Bg = "Accent", Parent = track })
-		round(fill)
-		local obj = { Frame = f }
+		new("Frame", { Bg = "Stroke", BackgroundTransparency = 0.45, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1), Parent = r })
+		local fill
+		if o.Bar then
+			local track = new("Frame", { Bg = "Stroke", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 2), ZIndex = 2, Parent = r })
+			fill = new("Frame", { Bg = "Accent", Size = UDim2.fromScale(0, 1), Parent = track })
+		end
+		local obj = { Frame = r, Name = name, Value = val }
 		function obj:Set(text, color, calm)
 			if val.Text ~= text then
 				val.Text = text
@@ -2006,45 +1977,40 @@ function Window:CreateDashboard(opts)
 					tween(val, { TextTransparency = 0 }, 0.3)
 				end
 			end
-			if color then
-				dot.Visible = true
-				tween(dot, { BackgroundColor3 = color }, 0.3)
-			end
+			tween(val, { TextColor3 = color or (o.Small and Theme.SubText or Theme.Text) }, 0.3)
 		end
 		function obj:Fill(frac)
-			track.Visible = true
-			tween(fill, { Size = UDim2.fromScale(math.clamp(frac, 0, 1), 1) }, 0.4)
+			if fill then tween(fill, { Size = UDim2.fromScale(math.clamp(frac, 0, 1), 1) }, 0.4) end
 		end
-		function obj:Click(fn) return clickable(f, fn) end
+		function obj:Click(fn)
+			local hit = hitZone(r, { ZIndex = 6 })
+			onHover(hit,
+				function()
+					tween(r, { BackgroundTransparency = 0.7 }, 0.15)
+					tween(name, { Position = UDim2.fromOffset(left + 4, 0) }, 0.18, Enum.EasingStyle.Quad)
+				end,
+				function()
+					tween(r, { BackgroundTransparency = 1 }, 0.2)
+					tween(name, { Position = UDim2.fromOffset(left, 0) }, 0.2, Enum.EasingStyle.Quad)
+				end)
+			onClick(hit, function()
+				name.Position = UDim2.fromOffset(left + 8, 0)
+				tween(name, { Position = UDim2.fromOffset(left, 0) }, 0.35, Enum.EasingStyle.Back)
+				fn()
+			end)
+			return hit
+		end
 		return obj
 	end
 
-	local function grid(parent, cols, cellH, pos, size)
-		local g = new("Frame", { Position = pos, Size = size, Parent = parent })
-		new("UIGridLayout", {
-			CellSize = UDim2.new(1 / cols, -(GAP * (cols - 1)) / cols, 0, cellH), CellPadding = UDim2.fromOffset(GAP, GAP),
-			SortOrder = Enum.SortOrder.LayoutOrder, Parent = g,
-		})
-		return g
-	end
-
-	local function row(h, order)
-		return new("Frame", { Size = UDim2.new(1, 0, 0, h), LayoutOrder = order, Parent = scroll })
-	end
-
-	local function pulse(obj, prop, to, t)
-		TweenService:Create(obj, TweenInfo.new(t or 1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { [prop] = to }):Play()
-	end
-
 	local hour = tonumber(os.date("%H")) or 12
-	local hello = opts.Greeting or (hour < 5 and "Good night" or hour < 11 and "Good morning" or hour < 15 and "Good afternoon" or hour < 19 and "Good evening" or "Good night")
+	local hello = opts.Greeting or (hour < 5 and "good night" or hour < 11 and "good morning" or hour < 15 and "good afternoon" or hour < 19 and "good evening" or "good night")
 	local gameName = opts.GameName or tostring(game.Name)
 	local age = LocalPlayer.AccountAge or 0
 	local ageText = age >= 365 and string.format("%.1f years", age / 365) or (age .. " days")
 
-	local hero = panel(row(84, 1), UDim2.fromScale(1, 1))
-	glow(hero, NumberSequence.new(0, 1), 20)
-	local avBox = new("Frame", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 0), Size = UDim2.fromOffset(58, 58), Bg = "Hover", Parent = hero })
+	local hero = block(92, 1)
+	local avBox = new("Frame", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 4, 0.5, -3), Size = UDim2.fromOffset(62, 62), Bg = "Hover", Parent = hero })
 	round(avBox)
 	local ring = stroke(avBox, "Accent", 2.5)
 	local ringG = new("UIGradient", {
@@ -2060,12 +2026,6 @@ function Window:CreateDashboard(opts)
 		}),
 		Parent = ring,
 	})
-	local halo = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(43, 42), Size = UDim2.fromOffset(64, 64), BackgroundTransparency = 1, Parent = hero })
-	round(halo)
-	local haloStroke = stroke(halo, "Accent", 1.5)
-	haloStroke.Transparency = 0.85
-	pulse(haloStroke, "Transparency", 0.45, 1.3)
-	pulse(halo, "Size", UDim2.fromOffset(72, 72), 1.3)
 	local av = new("ImageLabel", { Size = UDim2.fromScale(1, 1), Parent = avBox })
 	round(av)
 	task.spawn(function()
@@ -2074,159 +2034,137 @@ function Window:CreateDashboard(opts)
 		end)
 		if ok and av.Parent then av.Image = img end
 	end)
-	new("TextLabel", { Text = hello, Fg = "SubText", TextSize = 11, Position = UDim2.fromOffset(84, 14), Size = UDim2.new(1, -250, 0, 14), Parent = hero })
 	new("TextLabel", {
-		Text = LocalPlayer.DisplayName, Font = FONT_BOLD, TextSize = 18, Fg = "Text", Position = UDim2.fromOffset(84, 28),
-		Size = UDim2.new(1, -250, 0, 24), TextTruncate = Enum.TextTruncate.AtEnd, Parent = hero,
+		Text = string.lower(os.date("%a %d %b")) .. " / " .. hello, Font = MONO, Fg = "SubText", TextSize = 11,
+		Position = UDim2.fromOffset(84, 12), Size = UDim2.new(1, -250, 0, 14), Parent = hero,
+	})
+	new("TextLabel", {
+		Text = LocalPlayer.DisplayName, Font = FONT_BOLD, TextSize = 26, Fg = "Text", Position = UDim2.fromOffset(84, 28),
+		Size = UDim2.new(1, -250, 0, 30), TextTruncate = Enum.TextTruncate.AtEnd, Parent = hero,
 	})
 	local sub = new("TextLabel", {
-		Text = "@" .. LocalPlayer.Name .. "  |  " .. gameName, Fg = "SubText", TextSize = 11, Position = UDim2.fromOffset(84, 54),
-		Size = UDim2.new(1, -250, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, Parent = hero,
+		Text = "@" .. LocalPlayer.Name .. " / " .. gameName, Font = MONO, Fg = "SubText", TextSize = 11,
+		Position = UDim2.fromOffset(84, 62), Size = UDim2.new(1, -250, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, Parent = hero,
 	})
 	task.spawn(function()
 		if opts.GameName then return end
 		local ok, info = pcall(function() return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId) end)
 		if ok and info and info.Name and sub.Parent then
-			sub.Text = "@" .. LocalPlayer.Name .. "  |  " .. info.Name
+			sub.Text = "@" .. LocalPlayer.Name .. " / " .. info.Name
 		end
 	end)
-
-	local facts = new("Frame", { Bg = "Element", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(150, 62), Parent = hero })
-	corner(facts, 9)
-	stroke(facts)
 	local function fact(y, label, value)
-		new("TextLabel", { Text = label, Fg = "SubText", TextSize = 10, Position = UDim2.fromOffset(10, y), Size = UDim2.fromOffset(52, 16), Parent = facts })
+		new("TextLabel", { Text = label, Font = MONO, Fg = "SubText", TextSize = 10, Position = UDim2.new(1, -170, 0, y), Size = UDim2.fromOffset(56, 16), Parent = hero })
 		return new("TextLabel", {
-			Text = value, Fg = "Text", TextSize = 11, Font = FONT_BOLD, Position = UDim2.fromOffset(60, y), Size = UDim2.new(1, -70, 0, 16),
-			TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd, Parent = facts,
+			Text = value, Font = MONO, Fg = "Text", TextSize = 12, Position = UDim2.new(1, -114, 0, y), Size = UDim2.fromOffset(114, 16),
+			TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd, Parent = hero,
 		})
 	end
-	fact(6, "Account", ageText)
-	fact(23, "User ID", tostring(LocalPlayer.UserId))
-	local sessionLbl = fact(40, "Session", "00:00:00")
+	fact(14, "account", ageText)
+	fact(32, "user id", tostring(LocalPlayer.UserId))
+	local sessionLbl = fact(50, "session", "00:00:00")
+	new("Frame", { Bg = "Stroke", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1), Parent = hero })
 
-	local rowB = row(202, 2)
-	local serverCard = panel(rowB, UDim2.new(0.56, -4, 1, 0))
-	head(serverCard, "server", "Server")
+	local rowB = block(196, 2)
+	local mon = new("Frame", { Bg = "Card", Size = UDim2.new(0.58, -6, 1, 0), Parent = rowB })
+	corner(mon, 10)
+	stroke(mon)
+	new("TextLabel", { Text = "MONITOR", Font = MONO, TextSize = 10, Fg = "SubText", Position = UDim2.fromOffset(14, 11), Size = UDim2.fromOffset(80, 14), Parent = mon })
+	local modes = { { key = "fps", label = "FPS", unit = "fps" }, { key = "ping", label = "PING", unit = "ms" }, { key = "mem", label = "MEM", unit = "mb" } }
+	local TABW = 36
+	local mode = 1
+	local tabs = {}
+	local underline = new("Frame", { Bg = "Accent", Position = UDim2.new(1, -14 - (#modes - 1) * TABW + 6, 0, 28), Size = UDim2.fromOffset(TABW - 12, 2), Parent = mon })
+	local function paintTabs()
+		for i, tb in ipairs(tabs) do
+			tween(tb, { TextColor3 = i == mode and Theme.Text or Theme.SubText }, 0.2)
+		end
+		tween(underline, { Position = UDim2.new(1, -14 - (#modes - mode) * TABW + 6, 0, 28) }, 0.28, Enum.EasingStyle.Quint)
+	end
+	for i, m in ipairs(modes) do
+		local cell = new("Frame", { Position = UDim2.new(1, -14 - (#modes - i) * TABW, 0, 8), Size = UDim2.fromOffset(TABW, 20), Parent = mon })
+		tabs[i] = new("TextLabel", { Text = m.label, Font = MONO, TextSize = 10, Fg = "SubText", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = cell })
+		local hz = hitZone(cell, { ZIndex = 6 })
+		onClick(hz, function()
+			mode = i
+			paintTabs()
+			D.render()
+		end, true)
+	end
+	Hooks[#Hooks + 1] = function() paintTabs() end
+	local numRow = new("Frame", { Position = UDim2.fromOffset(14, 36), Size = UDim2.new(0.62, 0, 0, 42), Parent = mon })
+	local rl = listLayout(numRow, 6, Enum.FillDirection.Horizontal)
+	rl.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	local big = new("TextLabel", {
+		Text = "-", Font = FONT_BOLD, TextSize = 34, Fg = "Text", Size = UDim2.fromOffset(0, 40), AutomaticSize = AutoX,
+		TextYAlignment = Enum.TextYAlignment.Bottom, LayoutOrder = 1, Parent = numRow,
+	})
+	local unit = new("TextLabel", {
+		Text = "", Font = MONO, TextSize = 12, Fg = "SubText", Size = UDim2.fromOffset(0, 36), AutomaticSize = AutoX,
+		TextYAlignment = Enum.TextYAlignment.Bottom, LayoutOrder = 2, Parent = numRow,
+	})
+	local range = new("TextLabel", {
+		Text = "", Font = MONO, TextSize = 10, Fg = "SubText", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 40),
+		Size = UDim2.fromOffset(70, 40), TextXAlignment = Enum.TextXAlignment.Right, TextYAlignment = Enum.TextYAlignment.Bottom, Parent = mon,
+	})
+	local spark = new("Frame", { Position = UDim2.fromOffset(14, 88), Size = UDim2.new(1, -28, 0, 66), Parent = mon })
+	local bars = {}
+	for i = 1, SAMPLES do
+		bars[i] = new("Frame", {
+			Bg = "Accent", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new((i - 1) / SAMPLES, 0, 1, 0),
+			Size = UDim2.new(1 / SAMPLES, -1, 0, 2), BackgroundTransparency = 0.8 - 0.8 * (i / SAMPLES) + 0.05, Parent = spark,
+		})
+	end
+	new("Frame", { Bg = "Stroke", Position = UDim2.fromOffset(14, 155), Size = UDim2.new(1, -28, 0, 1), Parent = mon })
+	local foot = new("TextLabel", { Text = "", Font = MONO, Fg = "SubText", TextSize = 10, Position = UDim2.fromOffset(14, 163), Size = UDim2.new(1, -28, 0, 14), Parent = mon })
 
-	local sg = grid(serverCard, 2, TILE_H, UDim2.fromOffset(10, 40), UDim2.new(1, -20, 0, TILE_H * 3 + GAP * 2))
-	local tPlayers = tile(sg, "Players", "-", 1)
-	local tPing = tile(sg, "Latency", "-", 2)
-	local tFps = tile(sg, "Frame Rate", "-", 3)
-	local tRegion = tile(sg, "Region", "...", 4)
-	local tUp = tile(sg, "Server Uptime", "00:00:00", 5)
-	local tJoin = tile(sg, "Join Script", "Tap to copy", 6)
-
+	local srv = new("Frame", { Position = UDim2.new(0.58, 6, 0, 0), Size = UDim2.new(0.42, -6, 1, 0), Parent = rowB })
+	heading(srv, "Server")
+	local srvList = new("Frame", { Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, ROW_H * 6), Parent = srv })
+	listLayout(srvList, 0)
+	local rPlayers = listRow(srvList, 1, "Players", "-", { Bar = true })
+	local rPing = listRow(srvList, 2, "Latency", "-")
+	local rFps = listRow(srvList, 3, "Frame rate", "-")
+	local rRegion = listRow(srvList, 4, "Region", "...")
+	local rUp = listRow(srvList, 5, "Uptime", "00:00:00")
+	local rJoin = listRow(srvList, 6, "Join script", "copy >")
 	local joinCode = string.format('game:GetService("TeleportService"):TeleportToPlaceInstance(%s, "%s", game.Players.LocalPlayer)', tostring(game.PlaceId), tostring(game.JobId))
-	tJoin:Click(function()
+	rJoin:Click(function()
 		local ok = copy(joinCode)
-		tJoin:Set(ok and "Copied!" or "Not supported")
-		task.delay(1.6, function() tJoin:Set("Tap to copy") end)
+		rJoin:Set(ok and "copied" or "no clipboard")
+		task.delay(1.6, function() rJoin:Set("copy >") end)
 		Library:Notify({ Title = "Join Script", Content = ok and "Copied to clipboard." or "Your executor has no clipboard.", Icon = "copy" })
 	end)
-
 	task.spawn(function()
 		local ok, code = pcall(function()
 			return game:GetService("LocalizationService"):GetCountryRegionForPlayerAsync(LocalPlayer)
 		end)
-		tRegion:Set(ok and code and tostring(code) or "N/A")
+		rRegion:Set(ok and code and tostring(code) or "n/a")
 	end)
 
-	local hasDisc = type(opts.Discord) == "string" and opts.Discord ~= ""
-	local rc = new("Frame", { Position = UDim2.new(0.56, 4, 0, 0), Size = UDim2.new(0.44, -4, 1, 0), Parent = rowB })
-	local exCard = panel(rc, UDim2.new(1, 0, 0, hasDisc and 97 or 202))
-
-	local exName, exVer = "Unknown", "Executor"
-	if identifyexecutor then
-		local ok, n, v = pcall(identifyexecutor)
-		if ok and n then
-			exName = tostring(n)
-			exVer = v and tostring(v) or "Executor"
+	local frBlock = block(82, 3)
+	local fh = heading(frBlock, "Friends")
+	local refreshBtn = hitZone(fh, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, -4), Size = UDim2.fromOffset(40, 22) })
+	local refreshIcon = makeIcon(fh, "refresh", 12, "SubText", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 0) })
+	local track = new("Frame", { Bg = "Stroke", Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, 0, 0, 8), Parent = frBlock })
+	corner(track, 4)
+	local segOn = new("Frame", { Bg = "SubText", BackgroundTransparency = 0.35, Size = UDim2.fromScale(0, 1), Parent = track })
+	corner(segOn, 4)
+	local segIn = new("Frame", { Bg = "Accent", Size = UDim2.fromScale(0, 1), Parent = track })
+	corner(segIn, 4)
+	local legend = new("Frame", { Position = UDim2.fromOffset(0, 44), Size = UDim2.new(1, 0, 0, 34), Parent = frBlock })
+	new("UIGridLayout", { CellSize = UDim2.new(0.25, 0, 0, 34), CellPadding = UDim2.fromOffset(0, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = legend })
+	local legendKeys = { { "in server", "Accent" }, { "online", "SubText" }, { "offline", "Stroke" }, { "total", nil } }
+	local legendNums = {}
+	for i, k in ipairs(legendKeys) do
+		local cell = new("Frame", { LayoutOrder = i, Parent = legend })
+		legendNums[i] = new("TextLabel", { Text = "...", Font = FONT_BOLD, TextSize = 15, Fg = "Text", Size = UDim2.new(1, 0, 0, 18), Parent = cell })
+		if k[2] then
+			local sw = new("Frame", { Bg = k[2], Position = UDim2.fromOffset(0, 24), Size = UDim2.fromOffset(6, 6), Parent = cell })
+			corner(sw, 1)
 		end
+		new("TextLabel", { Text = k[1], Font = MONO, TextSize = 10, Fg = "SubText", Position = UDim2.fromOffset(k[2] and 11 or 0, 19), Size = UDim2.new(1, -11, 0, 16), Parent = cell })
 	end
-	local caps = {
-		{ "FS", HasFS }, { "Asset", getAsset ~= nil },
-		{ "HTTP", ((syn and syn.request) or (http and http.request) or http_request or request) ~= nil },
-		{ "Clip", (setclipboard or toclipboard or (syn and syn.write_clipboard)) ~= nil },
-		{ "Draw", Drawing ~= nil }, { "Hooks", hookfunction ~= nil }, { "Env", getgenv ~= nil }, { "UI", gethui ~= nil },
-	}
-	local passed = 0
-	for _, c in ipairs(caps) do
-		if c[2] then passed += 1 end
-	end
-	iconTile(exCard, "cpu", 28, 15, { Position = UDim2.fromOffset(10, 9) })
-	new("TextLabel", {
-		Text = exName, Font = FONT_BOLD, Fg = "Text", Position = UDim2.fromOffset(46, 8), Size = UDim2.new(1, -104, 0, 16),
-		TextTruncate = Enum.TextTruncate.AtEnd, Parent = exCard,
-	})
-	new("TextLabel", {
-		Text = exVer, Fg = "SubText", TextSize = 10, Position = UDim2.fromOffset(46, 24), Size = UDim2.new(1, -104, 0, 12),
-		TextTruncate = Enum.TextTruncate.AtEnd, Parent = exCard,
-	})
-	local badge = new("TextLabel", {
-		Text = passed .. "/" .. #caps, Font = FONT_BOLD, TextSize = 11, Fg = "Text", Bg = "Element", AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -10, 0, 12), Size = UDim2.fromOffset(42, 22), TextXAlignment = Enum.TextXAlignment.Center, Parent = exCard,
-	})
-	round(badge)
-	stroke(badge)
-	local chips = new("Frame", { Position = UDim2.fromOffset(10, 47), Size = UDim2.new(1, -20, 0, 44), Parent = exCard })
-	local chipList = listLayout(chips, 4, Enum.FillDirection.Horizontal)
-	chipList.Wraps = true
-	for i, c in ipairs(caps) do
-		local chip = new("TextLabel", {
-			Text = c[1], TextSize = 10, Font = FONT_BOLD, Fg = c[2] and "Text" or "SubText", Bg = "Element",
-			BackgroundTransparency = c[2] and 0 or 0.5, Size = UDim2.fromOffset(0, 18), AutomaticSize = AutoX,
-			TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = i, Parent = chips,
-		})
-		round(chip)
-		padding(chip, 6, 0, 6, 0)
-		local cs = stroke(chip, c[2] and "Accent" or "Stroke")
-		if c[2] then cs.Transparency = 0.55 end
-	end
-
-	if hasDisc then
-		local disc = panel(rc, UDim2.new(1, 0, 0, 97), UDim2.fromOffset(0, 105))
-		glow(disc, NumberSequence.new(1, 0), 0).BackgroundTransparency = 0.76
-		iconTile(disc, "chat", 34, 18, { Position = UDim2.fromOffset(12, 12) })
-		new("TextLabel", { Text = opts.DiscordTitle or "Join the Discord", Font = FONT_BOLD, TextSize = 14, Fg = "Text", Position = UDim2.fromOffset(54, 13), Size = UDim2.new(1, -64, 0, 18), TextTruncate = Enum.TextTruncate.AtEnd, Parent = disc })
-		local discSub = new("TextLabel", { Text = "Tap to copy the invite", Fg = "SubText", TextSize = 10, Position = UDim2.fromOffset(54, 31), Size = UDim2.new(1, -64, 0, 14), Parent = disc })
-		local invite = new("Frame", { Bg = "Element", Position = UDim2.fromOffset(12, 61), Size = UDim2.new(1, -24, 0, 26), Parent = disc })
-		corner(invite, 8)
-		stroke(invite)
-		new("TextLabel", { Text = opts.Discord, Fg = "Text", TextSize = 11, Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -34, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = invite })
-		makeIcon(invite, "copy", 13, "SubText", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -9, 0.5, 0) })
-		local hz = hitZone(disc, { ZIndex = 6 })
-		onClick(hz, function()
-			local ok = copy(opts.Discord)
-			discSub.Text = ok and "Invite copied!" or "Clipboard not supported"
-			task.delay(1.8, function()
-				if discSub.Parent then discSub.Text = "Tap to copy the invite" end
-			end)
-			Library:Notify({ Title = "Discord", Content = ok and "Invite copied to clipboard." or "Your executor has no clipboard.", Icon = "chat" })
-			local req = (syn and syn.request) or (http and http.request) or http_request or request
-			local code = opts.Discord:match("discord%.gg/([%w%-_]+)") or opts.Discord:match("discord%.com/invite/([%w%-_]+)")
-			if req and code then
-				task.spawn(function()
-					pcall(req, {
-						Url = "http://127.0.0.1:6463/rpc?v=1", Method = "POST",
-						Headers = { ["Content-Type"] = "application/json", Origin = "https://discord.com" },
-						Body = HttpService:JSONEncode({ cmd = "INVITE_BROWSER", args = { code = code }, nonce = HttpService:GenerateGUID(false) }),
-					})
-				end)
-			end
-		end)
-	end
-
-	local rowC = row(152, 3)
-	local frCard = panel(rowC, UDim2.new(0.5, -4, 1, 0))
-	local fh = head(frCard, "users", "Friends", 40)
-	local refreshBtn = hitZone(fh, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(34, 30) })
-	local refreshIcon = makeIcon(fh, "refresh", 14, "SubText", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -16, 0.5, 0) })
-	local fg = grid(frCard, 2, TILE_H, UDim2.fromOffset(10, 40), UDim2.new(1, -20, 0, TILE_H * 2 + GAP))
-	local tIn = tile(fg, "In Server", "...", 1)
-	local tOn = tile(fg, "Online", "...", 2)
-	local tOff = tile(fg, "Offline", "...", 3)
-	local tAll = tile(fg, "All Friends", "...", 4)
 
 	local loading = false
 	local function loadFriends()
@@ -2257,60 +2195,195 @@ function Window:CreateDashboard(opts)
 				end
 				all = n
 			end)
-			local function show(t, v) t:Set(v ~= nil and tostring(v) or "N/A") end
-			show(tIn, inServer)
-			show(tOn, online)
-			show(tAll, all)
-			show(tOff, (all and online) and math.max(all - online, 0) or nil)
+			local function show(i, v)
+				local text = v ~= nil and tostring(v) or "n/a"
+				if legendNums[i].Text ~= text then
+					legendNums[i].Text = text
+					legendNums[i].TextTransparency = 0.6
+					tween(legendNums[i], { TextTransparency = 0 }, 0.3)
+				end
+			end
+			show(1, inServer)
+			show(2, online)
+			show(3, (all and online) and math.max(all - online, 0) or nil)
+			show(4, all)
+			if all and all > 0 then
+				local onl = math.min(online or 0, all)
+				tween(segOn, { Size = UDim2.fromScale(onl / all, 1) }, 0.6, Enum.EasingStyle.Quint)
+				tween(segIn, { Size = UDim2.fromScale(math.min(inServer or 0, onl) / all, 1) }, 0.6, Enum.EasingStyle.Quint)
+			end
 			loading = false
 		end)
 	end
 	onClick(refreshBtn, loadFriends)
 
-	local perfCard = panel(rowC, UDim2.new(0.5, -4, 1, 0), UDim2.new(0.5, 4, 0, 0))
-	local ph = head(perfCard, "pulse", "Monitor", 100)
-	local modes = {
-		{ key = "fps", label = "FPS" }, { key = "ping", label = "PING" }, { key = "mem", label = "MEM" },
-	}
-	local mode = 1
-	local pills = {}
-	local function paintPills()
-		for i, p in ipairs(pills) do
-			local on = i == mode
-			tween(p.box, { BackgroundColor3 = on and Theme.Accent or Theme.Element }, 0.2)
-			tween(p.lbl, { TextColor3 = on and Theme.AccentText or Theme.SubText }, 0.2)
+	local rowC = block(200, 4)
+	local left = new("Frame", { Size = UDim2.new(0.58, -6, 1, 0), Parent = rowC })
+	heading(left, "Executor")
+	local exName, exVer = "Unknown", "executor"
+	if identifyexecutor then
+		local ok, n, v = pcall(identifyexecutor)
+		if ok and n then
+			exName = tostring(n)
+			exVer = v and tostring(v) or "executor"
 		end
 	end
-	for i, m in ipairs(modes) do
-		local box = new("Frame", { Bg = "Element", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10 - (#modes - i) * 33, 0.5, 0), Size = UDim2.fromOffset(30, 20), Parent = ph })
-		round(box)
-		stroke(box)
-		local lbl = new("TextLabel", { Text = m.label, Font = FONT_BOLD, TextSize = 9, Fg = "SubText", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = box })
-		pills[i] = { box = box, lbl = lbl }
-		local hz = hitZone(box, { ZIndex = 6 })
-		onClick(hz, function()
-			mode = i
-			paintPills()
-			D.render()
-		end, true)
+	local caps = {
+		{ "fs", HasFS }, { "asset", getAsset ~= nil },
+		{ "http", ((syn and syn.request) or (http and http.request) or http_request or request) ~= nil },
+		{ "clip", (setclipboard or toclipboard or (syn and syn.write_clipboard)) ~= nil },
+		{ "draw", Drawing ~= nil }, { "hooks", hookfunction ~= nil }, { "env", getgenv ~= nil }, { "ui", gethui ~= nil },
+	}
+	local passed = 0
+	for _, c in ipairs(caps) do
+		if c[2] then passed = passed + 1 end
 	end
-	Hooks[#Hooks + 1] = function() paintPills() end
-	local big = new("TextLabel", { Text = "-", Font = FONT_BOLD, TextSize = 20, Fg = "Text", Position = UDim2.fromOffset(12, 38), Size = UDim2.new(0.5, -12, 0, 26), Parent = perfCard })
-	local range = new("TextLabel", {
-		Text = "", Fg = "SubText", TextSize = 10, Position = UDim2.new(0.4, 0, 0, 44), Size = UDim2.new(0.6, -12, 0, 14),
-		TextXAlignment = Enum.TextXAlignment.Right, Parent = perfCard,
+	new("TextLabel", {
+		Text = exName, Font = FONT_BOLD, TextSize = 18, Fg = "Text", Position = UDim2.fromOffset(0, 28), Size = UDim2.new(0.7, 0, 0, 24),
+		TextTruncate = Enum.TextTruncate.AtEnd, Parent = left,
 	})
-	local spark = new("Frame", { Position = UDim2.fromOffset(12, 70), Size = UDim2.new(1, -24, 0, 54), Parent = perfCard })
-	local bars = {}
-	for i = 1, SAMPLES do
-		local b = new("Frame", {
-			Bg = "Accent", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new((i - 1) / SAMPLES, 1, 1, 0),
-			Size = UDim2.new(1 / SAMPLES, -2, 0, 2), BackgroundTransparency = 0.78 - 0.78 * (i / SAMPLES) + 0.06, Parent = spark,
+	new("TextLabel", {
+		Text = exVer, Font = MONO, TextSize = 11, Fg = "SubText", Position = UDim2.fromOffset(0, 52), Size = UDim2.new(0.7, 0, 0, 14),
+		TextTruncate = Enum.TextTruncate.AtEnd, Parent = left,
+	})
+	new("TextLabel", {
+		Text = passed .. "/" .. #caps, Font = FONT_BOLD, TextSize = 18, Fg = "Text", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 28),
+		Size = UDim2.new(0.3, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Right, Parent = left,
+	})
+	local capsBox = new("Frame", { Position = UDim2.fromOffset(0, 74), Size = UDim2.new(1, 0, 0, 36), Parent = left })
+	local capList = listLayout(capsBox, 10, Enum.FillDirection.Horizontal)
+	capList.Wraps = true
+	for i, c in ipairs(caps) do
+		new("TextLabel", {
+			Text = c[2] and string.upper(c[1]) or c[1], Font = MONO, TextSize = 11, Fg = c[2] and "Text" or "SubText",
+			TextTransparency = c[2] and 0 or 0.45, Size = UDim2.fromOffset(0, 16), AutomaticSize = AutoX, LayoutOrder = i, Parent = capsBox,
 		})
-		corner(b, 2)
-		bars[i] = b
 	end
-	local foot = new("TextLabel", { Text = "", Fg = "SubText", TextSize = 10, Position = UDim2.fromOffset(12, 130), Size = UDim2.new(1, -24, 0, 14), Parent = perfCard })
+	if type(opts.Discord) == "string" and opts.Discord ~= "" then
+		heading(left, opts.DiscordTitle or "Community", UDim2.fromOffset(0, 124))
+		local rDisc = listRow(left, 1, opts.Discord, "copy >", { Name = "Text", Icon = "chat" })
+		rDisc.Frame.Position = UDim2.fromOffset(0, 148)
+		rDisc.Name.Font = MONO
+		local discHint = new("TextLabel", {
+			Text = "tap the invite to copy it", Font = MONO, TextSize = 10, Fg = "SubText", Position = UDim2.fromOffset(2, 180), Size = UDim2.new(1, 0, 0, 14), Parent = left,
+		})
+		rDisc:Click(function()
+			local ok = copy(opts.Discord)
+			rDisc:Set(ok and "copied" or "no clipboard")
+			task.delay(1.8, function() rDisc:Set("copy >") end)
+			Library:Notify({ Title = "Discord", Content = ok and "Invite copied to clipboard." or "Your executor has no clipboard.", Icon = "chat" })
+			local req = (syn and syn.request) or (http and http.request) or http_request or request
+			local code = opts.Discord:match("discord%.gg/([%w%-_]+)") or opts.Discord:match("discord%.com/invite/([%w%-_]+)")
+			if req and code then
+				task.spawn(function()
+					pcall(req, {
+						Url = "http://127.0.0.1:6463/rpc?v=1", Method = "POST",
+						Headers = { ["Content-Type"] = "application/json", Origin = "https://discord.com" },
+						Body = HttpService:JSONEncode({ cmd = "INVITE_BROWSER", args = { code = code }, nonce = HttpService:GenerateGUID(false) }),
+					})
+				end)
+			end
+		end)
+	end
+
+	local function confirmThen(title, text, fn)
+		Library:Confirm({ Title = title, Content = text, ConfirmText = "Continue", CancelText = "Cancel", Icon = "info", Callback = fn })
+	end
+
+	local antiConn, savedGfx
+	local actions = {
+		{ Name = "Rejoin", Sub = "same server", Icon = "refresh", Callback = function()
+			confirmThen("Rejoin?", "You will be teleported back into this server.", function()
+				if #Players:GetPlayers() <= 1 then
+					pcall(function() ts:Teleport(game.PlaceId, LocalPlayer) end)
+				else
+					pcall(function() ts:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer) end)
+				end
+			end)
+		end },
+		{ Name = "Server Hop", Sub = "random public", Icon = "hop", Callback = function()
+			confirmThen("Server Hop?", "You will be moved to another public server of this game.", function()
+				Library:Notify({ Title = "Server Hop", Content = "Searching for a server...", Icon = "hop" })
+				task.spawn(function()
+					local ok = pcall(function()
+						local body = httpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")
+						local data = body and HttpService:JSONDecode(body)
+						local list = {}
+						for _, s in ipairs(data and data.data or {}) do
+							if s.id ~= game.JobId and s.playing and s.maxPlayers and s.playing < s.maxPlayers - 1 then list[#list + 1] = s.id end
+						end
+						if #list == 0 then
+							Library:Notify({ Title = "Server Hop", Content = "No other server found.", Icon = "info" })
+							return
+						end
+						ts:TeleportToPlaceInstance(game.PlaceId, list[math.random(#list)], LocalPlayer)
+					end)
+					if not ok then Library:Notify({ Title = "Server Hop", Content = "Failed to search for servers.", Icon = "info" }) end
+				end)
+			end)
+		end },
+		{ Name = "Copy Job ID", Sub = "clipboard", Icon = "copy", Callback = function()
+			local ok = copy(game.JobId)
+			Library:Notify({ Title = "Job ID", Content = ok and "Copied to clipboard." or "Your executor has no clipboard.", Icon = "copy" })
+		end },
+		{ Name = "Reset", Sub = "respawn", Icon = "user", Callback = function()
+			local ch = LocalPlayer.Character
+			local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+			if hum then hum.Health = 0 end
+		end },
+		{ Name = "Anti AFK", Icon = "shield", Toggle = true, Callback = function(on)
+			if antiConn then
+				antiConn:Disconnect()
+				antiConn = nil
+			end
+			if on then
+				antiConn = connect(LocalPlayer.Idled, function()
+					pcall(function()
+						local vu = game:GetService("VirtualUser")
+						vu:CaptureController()
+						vu:ClickButton2(Vector2.new())
+					end)
+				end)
+			end
+		end },
+		{ Name = "Low GFX", Icon = "bolt", Toggle = true, Callback = function(on)
+			pcall(function()
+				local lighting = game:GetService("Lighting")
+				if on then
+					savedGfx = { shadows = lighting.GlobalShadows, quality = settings().Rendering.QualityLevel }
+					lighting.GlobalShadows = false
+					settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+				elseif savedGfx then
+					lighting.GlobalShadows = savedGfx.shadows
+					settings().Rendering.QualityLevel = savedGfx.quality
+				end
+			end)
+		end },
+	}
+	for _, a in ipairs(opts.Actions or {}) do actions[#actions + 1] = a end
+
+	local act = new("Frame", { Position = UDim2.new(0.58, 6, 0, 0), Size = UDim2.new(0.42, -6, 1, 0), Parent = rowC })
+	heading(act, "Actions")
+	local actList = new("Frame", { Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, ROW_H * #actions), Parent = act })
+	listLayout(actList, 0)
+	rowC.Size = UDim2.new(1, 0, 0, math.max(200, 24 + ROW_H * #actions + 4))
+	D.Actions = {}
+	for i, a in ipairs(actions) do
+		local r = listRow(actList, i, a.Name, a.Toggle and "off" or (a.Sub or ""), { Icon = a.Icon or "click", Name = "Text", Small = true })
+		local state = { On = false }
+		if a.Toggle then
+			function state:Set(v, silent)
+				state.On = v and true or false
+				r:Set(state.On and "on" or "off", state.On and Theme.Text or nil, true)
+				if not silent and a.Callback then a.Callback(state.On) end
+			end
+			r:Click(function() state:Set(not state.On) end)
+			if a.Default then state:Set(true) end
+		else
+			r:Click(function() if a.Callback then a.Callback() end end)
+		end
+		D.Actions[a.Name] = state
+	end
 
 	local hist = { fps = {}, ping = {}, mem = {} }
 	local function push(list, v)
@@ -2332,151 +2405,36 @@ function Window:CreateDashboard(opts)
 		for _, v in ipairs(list) do
 			peak = math.max(peak, v)
 			low = math.min(low, v)
-			sum += v
+			sum = sum + v
 		end
 		if n == 0 then low = 0 end
 		local top = m == "fps" and math.max(60, peak) or m == "ping" and math.max(120, peak * 1.15) or math.max(peak * 1.1, 1)
 		for i = 1, SAMPLES do
 			local v = list[i - (SAMPLES - n)]
-			local frac = v and math.clamp(v / top, 0.04, 1) or 0.03
-			bars[i].Size = UDim2.new(1 / SAMPLES, -2, frac, 0)
+			local frac = v and math.clamp(v / top, 0.03, 1) or 0.02
+			bars[i].Size = UDim2.new(1 / SAMPLES, -1, frac, 0)
 		end
-		local cur = list[n] or 0
-		if m == "fps" then
-			big.Text = string.format("%d FPS", math.floor(cur + 0.5))
-		elseif m == "ping" then
-			big.Text = string.format("%d ms", math.floor(cur + 0.5))
-		else
-			big.Text = string.format("%d MB", math.floor(cur + 0.5))
-		end
-		range.Text = n > 0 and string.format("%d avg  %d-%d", math.floor(sum / n + 0.5), math.floor(low + 0.5), math.floor(peak + 0.5)) or ""
-		foot.Text = string.format("Ping %d ms  |  Memory %d MB  |  %d players", math.floor(win.Ping or 0), math.floor(hist.mem[#hist.mem] or 0), #Players:GetPlayers())
-	end
-
-	local label = new("TextLabel", {
-		Text = "QUICK ACTIONS", Font = FONT_BOLD, TextSize = 10, Fg = "SubText", Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 4, Parent = scroll,
-	})
-	padding(label, 4, 0, 0, 0)
-
-	local function confirmThen(title, text, fn)
-		Library:Confirm({ Title = title, Content = text, ConfirmText = "Continue", CancelText = "Cancel", Icon = "info", Callback = fn })
-	end
-
-	local antiConn, savedGfx
-	local actions = {
-		{ Name = "Rejoin", Sub = "Same server", Icon = "refresh", Callback = function()
-			confirmThen("Rejoin?", "You will be teleported back into this server.", function()
-				if #Players:GetPlayers() <= 1 then
-					pcall(function() ts:Teleport(game.PlaceId, LocalPlayer) end)
-				else
-					pcall(function() ts:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer) end)
-				end
-			end)
-		end },
-		{ Name = "Server Hop", Sub = "Random public", Icon = "hop", Callback = function()
-			confirmThen("Server Hop?", "You will be moved to another public server of this game.", function()
-				Library:Notify({ Title = "Server Hop", Content = "Searching for a server...", Icon = "hop" })
-				task.spawn(function()
-					local ok = pcall(function()
-						local body = httpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100")
-						local data = body and HttpService:JSONDecode(body)
-						local list = {}
-						for _, s in ipairs(data and data.data or {}) do
-							if s.id ~= game.JobId and s.playing and s.maxPlayers and s.playing < s.maxPlayers - 1 then list[#list + 1] = s.id end
-						end
-						if #list == 0 then
-							Library:Notify({ Title = "Server Hop", Content = "No other server found.", Icon = "info" })
-							return
-						end
-						ts:TeleportToPlaceInstance(game.PlaceId, list[math.random(#list)], LocalPlayer)
-					end)
-					if not ok then Library:Notify({ Title = "Server Hop", Content = "Failed to search for servers.", Icon = "info" }) end
-				end)
-			end)
-		end },
-		{ Name = "Copy Job ID", Sub = "To clipboard", Icon = "copy", Callback = function()
-			local ok = copy(game.JobId)
-			Library:Notify({ Title = "Job ID", Content = ok and "Copied to clipboard." or "Your executor has no clipboard.", Icon = "copy" })
-		end },
-		{ Name = "Reset", Sub = "Respawn", Icon = "user", Callback = function()
-			local ch = LocalPlayer.Character
-			local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-			if hum then hum.Health = 0 end
-		end },
-		{ Name = "Anti AFK", Icon = "shield", Toggle = true, Callback = function(on)
-			if antiConn then
-				antiConn:Disconnect()
-				antiConn = nil
-			end
-			if on then
-				antiConn = connect(LocalPlayer.Idled, function()
-					pcall(function()
-						local vu = game:GetService("VirtualUser")
-						vu:CaptureController()
-						vu:ClickButton2(Vector2.new())
-					end)
-				end)
-			end
-		end },
-		{ Name = "Low GFX", Sub = "Boost FPS", Icon = "bolt", Toggle = true, Callback = function(on)
-			pcall(function()
-				local lighting = game:GetService("Lighting")
-				if on then
-					savedGfx = { shadows = lighting.GlobalShadows, quality = settings().Rendering.QualityLevel }
-					lighting.GlobalShadows = false
-					settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-				elseif savedGfx then
-					lighting.GlobalShadows = savedGfx.shadows
-					settings().Rendering.QualityLevel = savedGfx.quality
-				end
-			end)
-		end },
-	}
-	for _, a in ipairs(opts.Actions or {}) do actions[#actions + 1] = a end
-
-	local rows = math.ceil(#actions / 3)
-	local ag = grid(scroll, 3, 52, UDim2.new(), UDim2.new(1, 0, 0, rows * 52 + (rows - 1) * GAP))
-	ag.LayoutOrder = 5
-	D.Actions = {}
-	for i, a in ipairs(actions) do
-		local f = new("Frame", { Bg = "Element", LayoutOrder = i, Parent = ag })
-		corner(f, 10)
-		stroke(f)
-		gradient(f, 205)
-		iconTile(f, a.Icon or "click", 30, 16, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0) })
-		new("TextLabel", { Text = a.Name, Font = FONT_BOLD, TextSize = 12, Fg = "Text", Position = UDim2.fromOffset(48, 9), Size = UDim2.new(1, -66, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, Parent = f })
-		local subLbl = new("TextLabel", { Text = a.Toggle and "Off" or (a.Sub or ""), Fg = "SubText", TextSize = 10, Position = UDim2.fromOffset(48, 26), Size = UDim2.new(1, -66, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, Parent = f })
-		local state = { On = false }
-		if a.Toggle then
-			function state:Set(v, silent)
-				state.On = v and true or false
-				subLbl.Text = state.On and "On" or "Off"
-				tween(subLbl, { TextColor3 = state.On and Theme.Text or Theme.SubText }, 0.2)
-				if not silent and a.Callback then a.Callback(state.On) end
-			end
-			clickable(f, function() state:Set(not state.On) end)
-			if a.Default then state:Set(true) end
-		else
-			clickable(f, function() if a.Callback then a.Callback() end end)
-		end
-		D.Actions[a.Name] = state
+		big.Text = tostring(math.floor((list[n] or 0) + 0.5))
+		unit.Text = modes[mode].unit
+		range.Text = n > 0 and string.format("avg %d\nmin %d\nmax %d", math.floor(sum / n + 0.5), math.floor(low + 0.5), math.floor(peak + 0.5)) or ""
+		foot.Text = string.format("ping %d ms / mem %d mb / %d players", math.floor(win.Ping or 0), math.floor(hist.mem[#hist.mem] or 0), #Players:GetPlayers())
 	end
 
 	local function updateTiles()
 		local players, maxP = #Players:GetPlayers(), Players.MaxPlayers or 0
-		tPlayers:Set(maxP > 0 and (players .. " / " .. maxP) or tostring(players), nil, true)
-		if maxP > 0 then tPlayers:Fill(players / maxP) end
+		rPlayers:Set(maxP > 0 and (players .. " / " .. maxP) or tostring(players), nil, true)
+		if maxP > 0 then rPlayers:Fill(players / maxP) end
 		local ping = win.Ping or 0
-		tPing:Set(string.format("%d ms", math.floor(ping + 0.5)), ping < 100 and GOOD or ping < 200 and WARN or BAD, true)
+		rPing:Set(string.format("%d ms", math.floor(ping + 0.5)), ping < 100 and GOOD or ping < 200 and WARN or BAD, true)
 		local fps = win.Fps or 0
-		tFps:Set(string.format("%d FPS", math.floor(fps + 0.5)), fps >= 55 and GOOD or fps >= 30 and WARN or BAD, true)
-		tUp:Set(clock(workspace.DistributedGameTime), nil, true)
+		rFps:Set(string.format("%d fps", math.floor(fps + 0.5)), fps >= 55 and GOOD or fps >= 30 and WARN or BAD, true)
+		rUp:Set(clock(workspace.DistributedGameTime), nil, true)
 		sessionLbl.Text = clock(os.clock() - born)
 	end
 
 	local acc, accSec, accFr = 0, 0, 0
 	connect(RunService.Heartbeat, function(dt)
-		acc += dt
+		acc = acc + dt
 		if acc >= 0.5 then
 			acc = 0
 			sample()
@@ -2486,14 +2444,13 @@ function Window:CreateDashboard(opts)
 			end
 		end
 		if tab.Active and win.Visible then
-			accSec += dt
-			accFr += dt
-			for _, g in ipairs(glows) do g.Rotation = (g.Rotation + dt * 14) % 360 end
+			accSec = accSec + dt
+			accFr = accFr + dt
 			ringG.Rotation = (ringG.Rotation + dt * 110) % 360
 			if accSec >= 1 then
 				accSec = 0
 				sessionLbl.Text = clock(os.clock() - born)
-				tUp:Set(clock(workspace.DistributedGameTime), nil, true)
+				rUp:Set(clock(workspace.DistributedGameTime), nil, true)
 			end
 			if accFr >= 60 then
 				accFr = 0
@@ -2503,10 +2460,10 @@ function Window:CreateDashboard(opts)
 	end)
 
 	function D.intro()
-		for i, sc in ipairs(scales) do
-			sc.Scale = 0.93
-			task.delay((i - 1) * 0.04, function()
-				if sc.Parent then tween(sc, { Scale = 1 }, 0.45, Enum.EasingStyle.Back) end
+		for i, g in ipairs(blocks) do
+			g.GroupTransparency = 1
+			task.delay((i - 1) * 0.07, function()
+				if g.Parent then tween(g, { GroupTransparency = 0 }, 0.45, Enum.EasingStyle.Quad) end
 			end)
 		end
 	end
@@ -2524,7 +2481,7 @@ function Window:CreateDashboard(opts)
 	D.render()
 	updateTiles()
 	loadFriends()
-	paintPills()
+	paintTabs()
 	D.intro()
 	return tab
 end
