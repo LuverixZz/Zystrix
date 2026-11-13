@@ -1916,7 +1916,7 @@ function Window:CreateDashboard(opts)
 	tab.Dashboard = D
 
 	local GOOD, WARN, BAD = Color3.fromRGB(74, 190, 120), Color3.fromRGB(235, 170, 60), Color3.fromRGB(226, 72, 80)
-	local MONO, SAMPLES, ROW_H = Enum.Font.Code, 40, 28
+	local MONO, SAMPLES, ROW_H = Enum.Font.Code, 40, 30
 	local blocks = {}
 	local born = os.clock()
 	local ts = game:GetService("TeleportService")
@@ -1938,10 +1938,14 @@ function Window:CreateDashboard(opts)
 		return g
 	end
 
-	local function heading(parent, text, pos, size)
-		local f = new("Frame", { Position = pos or UDim2.new(), Size = size or UDim2.new(1, 0, 0, 20), Parent = parent })
-		new("TextLabel", { Text = string.upper(text), Font = MONO, TextSize = 10, Fg = "SubText", Size = UDim2.new(1, 0, 0, 14), Parent = f })
-		new("Frame", { Bg = "Stroke", Position = UDim2.fromOffset(0, 17), Size = UDim2.new(1, 0, 0, 1), Parent = f })
+	local function heading(parent, text, icon, pos, size)
+		local f = new("Frame", { Position = pos or UDim2.new(), Size = size or UDim2.new(1, 0, 0, 26), Parent = parent })
+		iconTile(f, icon, 20, 11)
+		new("TextLabel", {
+			Text = text, Font = FONT_BOLD, TextSize = 13, Fg = "Text", Position = UDim2.fromOffset(28, 0), Size = UDim2.new(1, -28, 0, 20),
+			TextTruncate = Enum.TextTruncate.AtEnd, Parent = f,
+		})
+		new("Frame", { Bg = "Stroke", Position = UDim2.fromOffset(0, 25), Size = UDim2.new(1, 0, 0, 1), Parent = f })
 		return f
 	end
 
@@ -1954,14 +1958,20 @@ function Window:CreateDashboard(opts)
 			left = 24
 		end
 		local name = new("TextLabel", {
-			Text = label, Fg = o.Name or "SubText", TextSize = 12, Position = UDim2.fromOffset(left, 0), Size = UDim2.new(0.55, -left, 1, 0),
+			Text = label, Fg = o.Name or "SubText", TextSize = 12, Position = UDim2.fromOffset(left, 0), Size = UDim2.new(0.5, -left, 1, 0),
 			TextTruncate = Enum.TextTruncate.AtEnd, Parent = r,
 		})
 		local val = new("TextLabel", {
 			Text = value or "-", Font = MONO, TextSize = o.Small and 10 or 12, Fg = o.Small and "SubText" or "Text", AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, -2, 0, 0), Size = UDim2.new(0.45, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Right,
-			TextTruncate = Enum.TextTruncate.AtEnd, Parent = r,
+			Position = UDim2.new(1, -2, 0, 0), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = AutoX, TextXAlignment = Enum.TextXAlignment.Right,
+			Parent = r,
 		})
+		local function fitName()
+			local w, vw = r.AbsoluteSize.X, val.AbsoluteSize.X
+			if w > 0 and vw > 0 then name.Size = UDim2.new(0, math.max(24, w - left - vw - 12), 1, 0) end
+		end
+		val:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitName)
+		r:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitName)
 		new("Frame", { Bg = "Stroke", BackgroundTransparency = 0.45, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1), Parent = r })
 		local fill
 		if o.Bar then
@@ -2036,15 +2046,15 @@ function Window:CreateDashboard(opts)
 	end)
 	new("TextLabel", {
 		Text = string.lower(os.date("%a %d %b")) .. " / " .. hello, Font = MONO, Fg = "SubText", TextSize = 11,
-		Position = UDim2.fromOffset(84, 12), Size = UDim2.new(1, -250, 0, 14), Parent = hero,
+		Position = UDim2.fromOffset(84, 12), Size = UDim2.new(1, -284, 0, 14), Parent = hero,
 	})
 	new("TextLabel", {
 		Text = LocalPlayer.DisplayName, Font = FONT_BOLD, TextSize = 26, Fg = "Text", Position = UDim2.fromOffset(84, 28),
-		Size = UDim2.new(1, -250, 0, 30), TextTruncate = Enum.TextTruncate.AtEnd, Parent = hero,
+		Size = UDim2.new(1, -284, 0, 30), TextTruncate = Enum.TextTruncate.AtEnd, Parent = hero,
 	})
 	local sub = new("TextLabel", {
 		Text = "@" .. LocalPlayer.Name .. " / " .. gameName, Font = MONO, Fg = "SubText", TextSize = 11,
-		Position = UDim2.fromOffset(84, 62), Size = UDim2.new(1, -250, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, Parent = hero,
+		Position = UDim2.fromOffset(84, 62), Size = UDim2.new(1, -284, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, Parent = hero,
 	})
 	task.spawn(function()
 		if opts.GameName then return end
@@ -2054,9 +2064,9 @@ function Window:CreateDashboard(opts)
 		end
 	end)
 	local function fact(y, label, value)
-		new("TextLabel", { Text = label, Font = MONO, Fg = "SubText", TextSize = 10, Position = UDim2.new(1, -170, 0, y), Size = UDim2.fromOffset(56, 16), Parent = hero })
+		new("TextLabel", { Text = label, Font = MONO, Fg = "SubText", TextSize = 10, Position = UDim2.new(1, -184, 0, y), Size = UDim2.fromOffset(60, 16), Parent = hero })
 		return new("TextLabel", {
-			Text = value, Font = MONO, Fg = "Text", TextSize = 12, Position = UDim2.new(1, -114, 0, y), Size = UDim2.fromOffset(114, 16),
+			Text = value, Font = MONO, Fg = "Text", TextSize = 12, Position = UDim2.new(1, -120, 0, y), Size = UDim2.fromOffset(120, 16),
 			TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd, Parent = hero,
 		})
 	end
@@ -2065,24 +2075,25 @@ function Window:CreateDashboard(opts)
 	local sessionLbl = fact(50, "session", "00:00:00")
 	new("Frame", { Bg = "Stroke", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1), Parent = hero })
 
-	local rowB = block(196, 2)
-	local mon = new("Frame", { Bg = "Card", Size = UDim2.new(0.58, -6, 1, 0), Parent = rowB })
+	local rowB = block(214, 2)
+	local mon = new("Frame", { Bg = "Card", Size = UDim2.new(0.56, -6, 1, 0), Parent = rowB })
 	corner(mon, 10)
 	stroke(mon)
-	new("TextLabel", { Text = "MONITOR", Font = MONO, TextSize = 10, Fg = "SubText", Position = UDim2.fromOffset(14, 11), Size = UDim2.fromOffset(80, 14), Parent = mon })
+	iconTile(mon, "pulse", 22, 12, { Position = UDim2.fromOffset(12, 8) })
+	new("TextLabel", { Text = "Monitor", Font = FONT_BOLD, TextSize = 13, Fg = "Text", Position = UDim2.fromOffset(42, 8), Size = UDim2.fromOffset(70, 22), Parent = mon })
 	local modes = { { key = "fps", label = "FPS", unit = "fps" }, { key = "ping", label = "PING", unit = "ms" }, { key = "mem", label = "MEM", unit = "mb" } }
 	local TABW = 36
 	local mode = 1
 	local tabs = {}
-	local underline = new("Frame", { Bg = "Accent", Position = UDim2.new(1, -14 - (#modes - 1) * TABW + 6, 0, 28), Size = UDim2.fromOffset(TABW - 12, 2), Parent = mon })
+	local underline = new("Frame", { Bg = "Accent", Position = UDim2.new(1, -14 - (#modes - 1) * TABW + 6, 0, 30), Size = UDim2.fromOffset(TABW - 12, 2), Parent = mon })
 	local function paintTabs()
 		for i, tb in ipairs(tabs) do
 			tween(tb, { TextColor3 = i == mode and Theme.Text or Theme.SubText }, 0.2)
 		end
-		tween(underline, { Position = UDim2.new(1, -14 - (#modes - mode) * TABW + 6, 0, 28) }, 0.28, Enum.EasingStyle.Quint)
+		tween(underline, { Position = UDim2.new(1, -14 - (#modes - mode) * TABW + 6, 0, 30) }, 0.28, Enum.EasingStyle.Quint)
 	end
 	for i, m in ipairs(modes) do
-		local cell = new("Frame", { Position = UDim2.new(1, -14 - (#modes - i) * TABW, 0, 8), Size = UDim2.fromOffset(TABW, 20), Parent = mon })
+		local cell = new("Frame", { Position = UDim2.new(1, -14 - (#modes - i) * TABW, 0, 10), Size = UDim2.fromOffset(TABW, 20), Parent = mon })
 		tabs[i] = new("TextLabel", { Text = m.label, Font = MONO, TextSize = 10, Fg = "SubText", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = cell })
 		local hz = hitZone(cell, { ZIndex = 6 })
 		onClick(hz, function()
@@ -2092,7 +2103,7 @@ function Window:CreateDashboard(opts)
 		end, true)
 	end
 	Hooks[#Hooks + 1] = function() paintTabs() end
-	local numRow = new("Frame", { Position = UDim2.fromOffset(14, 36), Size = UDim2.new(0.62, 0, 0, 42), Parent = mon })
+	local numRow = new("Frame", { Position = UDim2.fromOffset(14, 44), Size = UDim2.new(0.6, 0, 0, 42), Parent = mon })
 	local rl = listLayout(numRow, 6, Enum.FillDirection.Horizontal)
 	rl.VerticalAlignment = Enum.VerticalAlignment.Bottom
 	local big = new("TextLabel", {
@@ -2104,10 +2115,10 @@ function Window:CreateDashboard(opts)
 		TextYAlignment = Enum.TextYAlignment.Bottom, LayoutOrder = 2, Parent = numRow,
 	})
 	local range = new("TextLabel", {
-		Text = "", Font = MONO, TextSize = 10, Fg = "SubText", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 40),
-		Size = UDim2.fromOffset(70, 40), TextXAlignment = Enum.TextXAlignment.Right, TextYAlignment = Enum.TextYAlignment.Bottom, Parent = mon,
+		Text = "", Font = MONO, TextSize = 10, Fg = "SubText", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 46),
+		Size = UDim2.fromOffset(64, 40), TextXAlignment = Enum.TextXAlignment.Right, TextYAlignment = Enum.TextYAlignment.Bottom, Parent = mon,
 	})
-	local spark = new("Frame", { Position = UDim2.fromOffset(14, 88), Size = UDim2.new(1, -28, 0, 66), Parent = mon })
+	local spark = new("Frame", { Position = UDim2.fromOffset(14, 98), Size = UDim2.new(1, -28, 0, 76), Parent = mon })
 	local bars = {}
 	for i = 1, SAMPLES do
 		bars[i] = new("Frame", {
@@ -2115,12 +2126,12 @@ function Window:CreateDashboard(opts)
 			Size = UDim2.new(1 / SAMPLES, -1, 0, 2), BackgroundTransparency = 0.8 - 0.8 * (i / SAMPLES) + 0.05, Parent = spark,
 		})
 	end
-	new("Frame", { Bg = "Stroke", Position = UDim2.fromOffset(14, 155), Size = UDim2.new(1, -28, 0, 1), Parent = mon })
-	local foot = new("TextLabel", { Text = "", Font = MONO, Fg = "SubText", TextSize = 10, Position = UDim2.fromOffset(14, 163), Size = UDim2.new(1, -28, 0, 14), Parent = mon })
+	new("Frame", { Bg = "Stroke", Position = UDim2.fromOffset(14, 181), Size = UDim2.new(1, -28, 0, 1), Parent = mon })
+	local foot = new("TextLabel", { Text = "", Font = MONO, Fg = "SubText", TextSize = 10, Position = UDim2.fromOffset(14, 191), Size = UDim2.new(1, -28, 0, 14), Parent = mon })
 
-	local srv = new("Frame", { Position = UDim2.new(0.58, 6, 0, 0), Size = UDim2.new(0.42, -6, 1, 0), Parent = rowB })
-	heading(srv, "Server")
-	local srvList = new("Frame", { Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, ROW_H * 6), Parent = srv })
+	local srv = new("Frame", { Position = UDim2.new(0.56, 6, 0, 0), Size = UDim2.new(0.44, -6, 1, 0), Parent = rowB })
+	heading(srv, "Server", "server")
+	local srvList = new("Frame", { Position = UDim2.fromOffset(0, 32), Size = UDim2.new(1, 0, 0, ROW_H * 6), Parent = srv })
 	listLayout(srvList, 0)
 	local rPlayers = listRow(srvList, 1, "Players", "-", { Bar = true })
 	local rPing = listRow(srvList, 2, "Latency", "-")
@@ -2142,18 +2153,25 @@ function Window:CreateDashboard(opts)
 		rRegion:Set(ok and code and tostring(code) or "n/a")
 	end)
 
-	local frBlock = block(82, 3)
-	local fh = heading(frBlock, "Friends")
-	local refreshBtn = hitZone(fh, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, -4), Size = UDim2.fromOffset(40, 22) })
-	local refreshIcon = makeIcon(fh, "refresh", 12, "SubText", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 0) })
-	local track = new("Frame", { Bg = "Stroke", Position = UDim2.fromOffset(0, 28), Size = UDim2.new(1, 0, 0, 8), Parent = frBlock })
+	local frBlock = block(96, 3)
+	local fh = heading(frBlock, "Friends", "users")
+	local refreshBtn, refreshZone = hitZone(fh, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, -2), Size = UDim2.fromOffset(84, 24) })
+	local refreshIcon = makeIcon(fh, "refresh", 12, "SubText", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -2, 0, 4) })
+	local refreshText = new("TextLabel", {
+		Text = "refresh", Font = MONO, TextSize = 10, Fg = "SubText", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -20, 0, 4),
+		Size = UDim2.fromOffset(50, 14), TextXAlignment = Enum.TextXAlignment.Right, Parent = fh,
+	})
+	onHover(refreshBtn,
+		function() tween(refreshText, { TextColor3 = Theme.Text }, 0.15) tintIcon(refreshIcon, Theme.Text) end,
+		function() tween(refreshText, { TextColor3 = Theme.SubText }, 0.2) tintIcon(refreshIcon, Theme.SubText) end)
+	local track = new("Frame", { Bg = "Stroke", Position = UDim2.fromOffset(0, 38), Size = UDim2.new(1, 0, 0, 8), Parent = frBlock })
 	corner(track, 4)
 	local segOn = new("Frame", { Bg = "SubText", BackgroundTransparency = 0.35, Size = UDim2.fromScale(0, 1), Parent = track })
 	corner(segOn, 4)
 	local segIn = new("Frame", { Bg = "Accent", Size = UDim2.fromScale(0, 1), Parent = track })
 	corner(segIn, 4)
-	local legend = new("Frame", { Position = UDim2.fromOffset(0, 44), Size = UDim2.new(1, 0, 0, 34), Parent = frBlock })
-	new("UIGridLayout", { CellSize = UDim2.new(0.25, 0, 0, 34), CellPadding = UDim2.fromOffset(0, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = legend })
+	local legend = new("Frame", { Position = UDim2.fromOffset(0, 56), Size = UDim2.new(1, 0, 0, 36), Parent = frBlock })
+	new("UIGridLayout", { CellSize = UDim2.new(0.25, 0, 0, 36), CellPadding = UDim2.fromOffset(0, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = legend })
 	local legendKeys = { { "in server", "Accent" }, { "online", "SubText" }, { "offline", "Stroke" }, { "total", nil } }
 	local legendNums = {}
 	for i, k in ipairs(legendKeys) do
@@ -2163,7 +2181,7 @@ function Window:CreateDashboard(opts)
 			local sw = new("Frame", { Bg = k[2], Position = UDim2.fromOffset(0, 24), Size = UDim2.fromOffset(6, 6), Parent = cell })
 			corner(sw, 1)
 		end
-		new("TextLabel", { Text = k[1], Font = MONO, TextSize = 10, Fg = "SubText", Position = UDim2.fromOffset(k[2] and 11 or 0, 19), Size = UDim2.new(1, -11, 0, 16), Parent = cell })
+		new("TextLabel", { Text = k[1], Font = MONO, TextSize = 10, Fg = "SubText", Position = UDim2.fromOffset(k[2] and 12 or 0, 20), Size = UDim2.new(1, -12, 0, 14), Parent = cell })
 	end
 
 	local loading = false
@@ -2217,9 +2235,9 @@ function Window:CreateDashboard(opts)
 	end
 	onClick(refreshBtn, loadFriends)
 
-	local rowC = block(200, 4)
-	local left = new("Frame", { Size = UDim2.new(0.58, -6, 1, 0), Parent = rowC })
-	heading(left, "Executor")
+	local rowC = block(214, 4)
+	local left = new("Frame", { Size = UDim2.new(0.56, -6, 1, 0), Parent = rowC })
+	heading(left, "Executor", "cpu")
 	local exName, exVer = "Unknown", "executor"
 	if identifyexecutor then
 		local ok, n, v = pcall(identifyexecutor)
@@ -2239,20 +2257,21 @@ function Window:CreateDashboard(opts)
 		if c[2] then passed = passed + 1 end
 	end
 	new("TextLabel", {
-		Text = exName, Font = FONT_BOLD, TextSize = 18, Fg = "Text", Position = UDim2.fromOffset(0, 28), Size = UDim2.new(0.7, 0, 0, 24),
+		Text = exName, Font = FONT_BOLD, TextSize = 18, Fg = "Text", Position = UDim2.fromOffset(0, 36), Size = UDim2.new(0.7, 0, 0, 24),
 		TextTruncate = Enum.TextTruncate.AtEnd, Parent = left,
 	})
 	new("TextLabel", {
-		Text = exVer, Font = MONO, TextSize = 11, Fg = "SubText", Position = UDim2.fromOffset(0, 52), Size = UDim2.new(0.7, 0, 0, 14),
+		Text = exVer, Font = MONO, TextSize = 11, Fg = "SubText", Position = UDim2.fromOffset(0, 60), Size = UDim2.new(0.7, 0, 0, 14),
 		TextTruncate = Enum.TextTruncate.AtEnd, Parent = left,
 	})
 	new("TextLabel", {
-		Text = passed .. "/" .. #caps, Font = FONT_BOLD, TextSize = 18, Fg = "Text", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 28),
+		Text = passed .. "/" .. #caps, Font = FONT_BOLD, TextSize = 18, Fg = "Text", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 36),
 		Size = UDim2.new(0.3, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Right, Parent = left,
 	})
-	local capsBox = new("Frame", { Position = UDim2.fromOffset(0, 74), Size = UDim2.new(1, 0, 0, 36), Parent = left })
-	local capList = listLayout(capsBox, 10, Enum.FillDirection.Horizontal)
+	local capsBox = new("Frame", { Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 38), Parent = left })
+	local capList = listLayout(capsBox, 8, Enum.FillDirection.Horizontal)
 	capList.Wraps = true
+	capList.Padding = UDim.new(0, 12)
 	for i, c in ipairs(caps) do
 		new("TextLabel", {
 			Text = c[2] and string.upper(c[1]) or c[1], Font = MONO, TextSize = 11, Fg = c[2] and "Text" or "SubText",
@@ -2260,12 +2279,12 @@ function Window:CreateDashboard(opts)
 		})
 	end
 	if type(opts.Discord) == "string" and opts.Discord ~= "" then
-		heading(left, opts.DiscordTitle or "Community", UDim2.fromOffset(0, 124))
-		local rDisc = listRow(left, 1, opts.Discord, "copy >", { Name = "Text", Icon = "chat" })
-		rDisc.Frame.Position = UDim2.fromOffset(0, 148)
+		heading(left, opts.DiscordTitle or "Community", "chat", UDim2.fromOffset(0, 134))
+		local rDisc = listRow(left, 1, opts.Discord, "copy >", { Name = "Text", Icon = "link" })
+		rDisc.Frame.Position = UDim2.fromOffset(0, 166)
 		rDisc.Name.Font = MONO
 		local discHint = new("TextLabel", {
-			Text = "tap the invite to copy it", Font = MONO, TextSize = 10, Fg = "SubText", Position = UDim2.fromOffset(2, 180), Size = UDim2.new(1, 0, 0, 14), Parent = left,
+			Text = "tap the invite to copy it", Font = MONO, TextSize = 10, Fg = "SubText", Position = UDim2.fromOffset(2, 198), Size = UDim2.new(1, 0, 0, 14), Parent = left,
 		})
 		rDisc:Click(function()
 			local ok = copy(opts.Discord)
@@ -2292,7 +2311,7 @@ function Window:CreateDashboard(opts)
 
 	local antiConn, savedGfx
 	local actions = {
-		{ Name = "Rejoin", Sub = "same server", Icon = "refresh", Callback = function()
+		{ Name = "Rejoin", Sub = "server", Icon = "refresh", Callback = function()
 			confirmThen("Rejoin?", "You will be teleported back into this server.", function()
 				if #Players:GetPlayers() <= 1 then
 					pcall(function() ts:Teleport(game.PlaceId, LocalPlayer) end)
@@ -2301,7 +2320,7 @@ function Window:CreateDashboard(opts)
 				end
 			end)
 		end },
-		{ Name = "Server Hop", Sub = "random public", Icon = "hop", Callback = function()
+		{ Name = "Server Hop", Sub = "random", Icon = "hop", Callback = function()
 			confirmThen("Server Hop?", "You will be moved to another public server of this game.", function()
 				Library:Notify({ Title = "Server Hop", Content = "Searching for a server...", Icon = "hop" })
 				task.spawn(function()
@@ -2322,7 +2341,7 @@ function Window:CreateDashboard(opts)
 				end)
 			end)
 		end },
-		{ Name = "Copy Job ID", Sub = "clipboard", Icon = "copy", Callback = function()
+		{ Name = "Copy Job ID", Sub = "job id", Icon = "copy", Callback = function()
 			local ok = copy(game.JobId)
 			Library:Notify({ Title = "Job ID", Content = ok and "Copied to clipboard." or "Your executor has no clipboard.", Icon = "copy" })
 		end },
@@ -2362,11 +2381,11 @@ function Window:CreateDashboard(opts)
 	}
 	for _, a in ipairs(opts.Actions or {}) do actions[#actions + 1] = a end
 
-	local act = new("Frame", { Position = UDim2.new(0.58, 6, 0, 0), Size = UDim2.new(0.42, -6, 1, 0), Parent = rowC })
-	heading(act, "Actions")
-	local actList = new("Frame", { Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, ROW_H * #actions), Parent = act })
+	local act = new("Frame", { Position = UDim2.new(0.56, 6, 0, 0), Size = UDim2.new(0.44, -6, 1, 0), Parent = rowC })
+	heading(act, "Actions", "bolt")
+	local actList = new("Frame", { Position = UDim2.fromOffset(0, 32), Size = UDim2.new(1, 0, 0, ROW_H * #actions), Parent = act })
 	listLayout(actList, 0)
-	rowC.Size = UDim2.new(1, 0, 0, math.max(200, 24 + ROW_H * #actions + 4))
+	rowC.Size = UDim2.new(1, 0, 0, math.max(214, 36 + ROW_H * #actions))
 	D.Actions = {}
 	for i, a in ipairs(actions) do
 		local r = listRow(actList, i, a.Name, a.Toggle and "off" or (a.Sub or ""), { Icon = a.Icon or "click", Name = "Text", Small = true })
