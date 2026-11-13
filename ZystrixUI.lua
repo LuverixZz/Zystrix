@@ -2046,7 +2046,26 @@ function Window:CreateDashboard(opts)
 	glow(hero, NumberSequence.new(0, 1), 20)
 	local avBox = new("Frame", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 0), Size = UDim2.fromOffset(58, 58), Bg = "Hover", Parent = hero })
 	round(avBox)
-	stroke(avBox, "Accent", 2)
+	local ring = stroke(avBox, "Accent", 2.5)
+	local ringG = new("UIGradient", {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(110, 110, 110)),
+			ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1)),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(0.55, 0.88),
+			NumberSequenceKeypoint.new(1, 0),
+		}),
+		Parent = ring,
+	})
+	local halo = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(43, 42), Size = UDim2.fromOffset(64, 64), BackgroundTransparency = 1, Parent = hero })
+	round(halo)
+	local haloStroke = stroke(halo, "Accent", 1.5)
+	haloStroke.Transparency = 0.85
+	pulse(haloStroke, "Transparency", 0.45, 1.3)
+	pulse(halo, "Size", UDim2.fromOffset(72, 72), 1.3)
 	local av = new("ImageLabel", { Size = UDim2.fromScale(1, 1), Parent = avBox })
 	round(av)
 	task.spawn(function()
@@ -2088,14 +2107,7 @@ function Window:CreateDashboard(opts)
 
 	local rowB = row(202, 2)
 	local serverCard = panel(rowB, UDim2.new(0.56, -4, 1, 0))
-	local sh = head(serverCard, "server", "Server", 60)
-	local liveTag = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(46, 18), Bg = "Element", Parent = sh })
-	round(liveTag)
-	stroke(liveTag)
-	local liveDot = new("Frame", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.fromOffset(6, 6), BackgroundColor3 = GOOD, Parent = liveTag })
-	round(liveDot)
-	pulse(liveDot, "BackgroundTransparency", 0.7, 0.9)
-	new("TextLabel", { Text = "LIVE", Font = FONT_BOLD, TextSize = 9, Fg = "SubText", Position = UDim2.fromOffset(19, 0), Size = UDim2.new(1, -19, 1, 0), Parent = liveTag })
+	head(serverCard, "server", "Server")
 
 	local sg = grid(serverCard, 2, TILE_H, UDim2.fromOffset(10, 40), UDim2.new(1, -20, 0, TILE_H * 3 + GAP * 2))
 	local tPlayers = tile(sg, "Players", "-", 1)
@@ -2477,6 +2489,7 @@ function Window:CreateDashboard(opts)
 			accSec += dt
 			accFr += dt
 			for _, g in ipairs(glows) do g.Rotation = (g.Rotation + dt * 14) % 360 end
+			ringG.Rotation = (ringG.Rotation + dt * 110) % 360
 			if accSec >= 1 then
 				accSec = 0
 				sessionLbl.Text = clock(os.clock() - born)
