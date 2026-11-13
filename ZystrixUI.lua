@@ -2055,10 +2055,6 @@ function Window:CreateDashboard(opts)
 		end)
 		if ok and av.Parent then av.Image = img end
 	end)
-	local live = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.86, 0.86), Size = UDim2.fromOffset(14, 14), BackgroundColor3 = GOOD, ZIndex = 3, Parent = avBox })
-	round(live)
-	stroke(live, "Card", 2)
-	pulse(live, "BackgroundTransparency", 0.55)
 	new("TextLabel", { Text = hello, Fg = "SubText", TextSize = 11, Position = UDim2.fromOffset(84, 14), Size = UDim2.new(1, -250, 0, 14), Parent = hero })
 	new("TextLabel", {
 		Text = LocalPlayer.DisplayName, Font = FONT_BOLD, TextSize = 18, Fg = "Text", Position = UDim2.fromOffset(84, 28),
@@ -2440,13 +2436,10 @@ function Window:CreateDashboard(opts)
 		local subLbl = new("TextLabel", { Text = a.Toggle and "Off" or (a.Sub or ""), Fg = "SubText", TextSize = 10, Position = UDim2.fromOffset(48, 26), Size = UDim2.new(1, -66, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, Parent = f })
 		local state = { On = false }
 		if a.Toggle then
-			local dot = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(8, 8), Bg = "Stroke", Parent = f })
-			round(dot)
 			function state:Set(v, silent)
 				state.On = v and true or false
 				subLbl.Text = state.On and "On" or "Off"
-				tween(dot, { BackgroundColor3 = state.On and Theme.Accent or Theme.Stroke }, 0.2)
-				tween(dot, { Size = UDim2.fromOffset(state.On and 10 or 8, state.On and 10 or 8) }, 0.25, Enum.EasingStyle.Back)
+				tween(subLbl, { TextColor3 = state.On and Theme.Text or Theme.SubText }, 0.2)
 				if not silent and a.Callback then a.Callback(state.On) end
 			end
 			clickable(f, function() state:Set(not state.On) end)
@@ -2858,19 +2851,6 @@ function Library:CreateWindow(opts)
 		TweenService:Create(toggleCrown, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
 			Position = UDim2.new(0.5, 0, 0.5, -2),
 		}):Play()
-
-		local dot = new("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.84, 0, 0.84, 0), Size = UDim2.fromOffset(9, 9),
-			BackgroundColor3 = Theme.Accent, ZIndex = 3, Parent = holder,
-		})
-		round(dot)
-		stroke(dot, "Sidebar", 1.5)
-		local function paintDot(instant)
-			tween(dot, { BackgroundColor3 = self.Visible and Theme.Accent or Theme.SubText }, instant and 0 or 0.25)
-		end
-		paintDot(true)
-		Hooks[#Hooks + 1] = paintDot
-		self.OnToggle = function() paintDot(false) end
 
 		local fsc = new("UIScale", { Parent = fb })
 		local fhit = hitZone(holder, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(TOG_SIZE + 20, TOG_SIZE + 20), ZIndex = 5 })
