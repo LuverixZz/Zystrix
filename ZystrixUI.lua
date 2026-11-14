@@ -88,7 +88,7 @@ for k, v in pairs(Themes.Monochrome) do Theme[k] = v end
 
 local Library = {
 	Flags = {}, Options = {}, Connections = {}, Windows = {},
-	Version = "1.7.0", ThemeName = "Monochrome",
+	Version = "1.8.0", ThemeName = "Monochrome",
 	ThemeList = { "Monochrome", "Crimson", "Ocean", "Emerald", "Violet", "Amber" },
 	Transparency = 0.1, ConfigFolder = ROOT, Listening = false,
 }
@@ -754,6 +754,7 @@ function Library:Notify(o)
 		for i = #NotifToasts, 1, -1 do
 			if NotifToasts[i] == dismiss then table.remove(NotifToasts, i) end
 		end
+		tween(toast, { BackgroundColor3 = Theme.Hover }, 0.08)
 		tween(mover, { Position = UDim2.fromOffset(NOTIFY_OFF, 0) }, 0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 		task.delay(0.26, function()
 			if not slot.Parent then return end
@@ -939,6 +940,72 @@ function onClick(btn, fn, eager)
 		end
 	end)
 end
+local function pressFx(hit, o)
+	o = o or {}
+	local target = o.target or hit.Parent
+	local sc = o.scale
+	local useFlash = not o.noFlash and not target:FindFirstChildOfClass("UIListLayout") and not target:FindFirstChildOfClass("UIGridLayout")
+	local flash = nil
+	local function getFlash()
+		if flash and flash.Parent then return flash end
+		flash = target:FindFirstChild("Flash")
+		if flash then return flash end
+		flash = Instance.new("Frame")
+		flash.Name = "Flash"
+		flash.BackgroundTransparency = 1
+		flash.BorderSizePixel = 0
+		flash.Active = false
+		flash.Size = UDim2.fromScale(1, 1)
+		flash.ZIndex = 20
+		local c = target:FindFirstChildOfClass("UICorner")
+		if c then
+			c:Clone().Parent = flash
+		elseif o.corner then
+			local nc = Instance.new("UICorner")
+			nc.CornerRadius = UDim.new(0, o.corner)
+			nc.Parent = flash
+		end
+		flash.Parent = target
+		return flash
+	end
+	local function press(touch)
+		if useFlash then
+			local f = getFlash()
+			f.BackgroundColor3 = o.color and o.color() or Theme.Text
+			tween(f, { BackgroundTransparency = touch and (o.alpha or 0.86) + 0.03 or (o.alpha or 0.86) }, 0.05, Enum.EasingStyle.Quad)
+		end
+		if sc then tween(sc, { Scale = o.down or 0.94 }, 0.06, Enum.EasingStyle.Quad) end
+		if o.onDown then o.onDown() end
+	end
+	local function release()
+		if flash and flash.Parent then tween(flash, { BackgroundTransparency = 1 }, 0.4, Enum.EasingStyle.Quad) end
+		if sc then
+			local r = o.rest
+			if type(r) == "function" then r = r() end
+			tween(sc, { Scale = r or 1 }, 0.32, Enum.EasingStyle.Back)
+		end
+		if o.onUp then o.onUp() end
+	end
+	connect(hit.InputBegan, function(i)
+		local t = i.UserInputType
+		local touch = t == Enum.UserInputType.Touch
+		if t ~= Enum.UserInputType.MouseButton1 and not touch then return end
+		press(touch)
+		local start = i.Position
+		local con
+		con = i.Changed:Connect(function()
+			local st = i.UserInputState
+			if st == Enum.UserInputState.End or st == Enum.UserInputState.Cancel then
+				con:Disconnect()
+				release()
+			elseif touch and (i.Position - start).Magnitude > TAP_SLOP then
+				con:Disconnect()
+				release()
+			end
+		end)
+	end)
+end
+
 local function hoverRow(row, hit, key)
 	onHover(hit,
 		function() tween(row, { BackgroundColor3 = Theme.Hover }, 0.15) end,
@@ -1002,6 +1069,8 @@ function Section:AddToggle(o)
 		if silent then quiet(self) else fire(self, o) end
 	end
 	function obj:Get() return self.Value end
+	local psc = new("UIScale", { Parent = pill })
+	pressFx(hit, { target = row, scale = psc, down = 0.88 })
 	onClick(hit, function() obj:Set(not obj.Value) end)
 	register(obj, o)
 	return obj
@@ -1242,6 +1311,7 @@ function Section:AddDropdown(o)
 			onHover(item,
 				function() tween(item, { BackgroundTransparency = 0 }, 0.12) end,
 				function() tween(item, { BackgroundTransparency = 1 }, 0.15) end)
+			pressFx(item, { target = item, alpha = 0.8 })
 			onClick(item, function()
 				if isNone then obj:Set(nil) else obj:Set(opt) end
 				closePopup()
@@ -1267,6 +1337,7 @@ function Section:AddDropdown(o)
 		Library.OpenPopup = close
 		onClick(blocker, closePopup)
 	end
+	pressFx(hit, { target = box })
 	onClick(hit, function()
 		if isOpen then closePopup() else open() end
 	end)
@@ -1338,8 +1409,12 @@ function Section:AddButton(o)
 			tween(target, { BackgroundColor3 = base() }, 0.2)
 			tween(sc, { Scale = 1 }, 0.2, Enum.EasingStyle.Quad)
 		end)
-	connect(hit.MouseButton1Down, function() tween(sc, { Scale = 0.95 }, 0.06) end)
-	connect(hit.MouseButton1Up, function() tween(sc, { Scale = 1 }, 0.12, Enum.EasingStyle.Quad) end)
+	pressFx(hit, {
+		target = target, scale = (not primary) and sc or nil, down = 0.92,
+		rest = function() return (IS_TOUCH or primary) and 1 or 1.05 end,
+		color = primary and function() return Theme.Background end or nil,
+		alpha = primary and 0.78 or 0.84,
+	})
 	onClick(hit, function()
 		if o.Callback then task.spawn(o.Callback) end
 	end)
@@ -1362,6 +1437,8 @@ function Section:AddTextbox(o)
 	padding(tb, 8, 0, 8, 0)
 	local st = stroke(tb)
 	local obj = { Type = "Textbox", Value = o.Default or "", Input = tb }
+	pressFx(zone, { target = tb })
+	pressFx(tb, { target = tb })
 	onClick(zone, function() tb:CaptureFocus() end)
 	connect(tb.Focused, function() tween(st, { Color = Theme.Accent }, 0.2) end)
 	connect(tb.FocusLost, function()
@@ -1415,6 +1492,8 @@ function Section:AddKeybind(o)
 		if not silent and o.Changed then task.spawn(o.Changed, self.Value) end
 	end
 	function obj:Get() return self.Value end
+	pressFx(btn, { target = btn })
+	pressFx(zone, { target = btn })
 	onClick(btn, function() setListening(true) end)
 	onClick(zone, function() setListening(true) end)
 	connect(UserInputService.InputBegan, function(i, gp)
@@ -1544,6 +1623,7 @@ function Tab:AddSection(o)
 			end)
 		end
 	end
+	pressFx(hz, { target = header, corner = 10, alpha = 0.9 })
 	onClick(hz, function()
 		sec.Collapsed = not sec.Collapsed
 		tween(chev, { Rotation = sec.Collapsed and 0 or 180 }, 0.25)
@@ -1609,6 +1689,7 @@ function Window:_sub(parentTab)
 	parentTab.SubFrame = sf
 	parentTab.Chevron = makeIcon(parentTab.Button, "chevron", 12, "SubText", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0) })
 	local zh = hitZone(parentTab.Button, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.fromOffset(40, 34) })
+	pressFx(zh, { target = parentTab.Button })
 	onClick(zh, function() Library._toggleSub(parentTab) end)
 	return sf
 end
@@ -1693,6 +1774,7 @@ function Window:AddTab(opts)
 		tab.Page, tab.Scroll, tab.Left, tab.Right = holder, scroll, left, right
 	end
 
+	pressFx(btn, { target = btn, alpha = 0.88 })
 	onClick(btn, function()
 		if tab.Page then
 			self:SelectTab(tab)
@@ -1959,22 +2041,13 @@ function Window:CreateDashboard(opts)
 		return g
 	end
 
-	local function press(gui)
-		local sc = gui:FindFirstChild("PressScale")
-		if not sc then sc = new("UIScale", { Name = "PressScale", Parent = gui }) end
-		sc.Scale = 0.95
-		tween(sc, { Scale = 1 }, 0.35, Enum.EasingStyle.Back)
-	end
-
 	local function clickable(gui, fn, key)
 		local hit = hitZone(gui, { ZIndex = 6 })
 		onHover(hit,
 			function() tween(gui, { BackgroundColor3 = Theme.Hover }, 0.15) end,
 			function() tween(gui, { BackgroundColor3 = Theme[key or "Element"] }, 0.2) end)
-		onClick(hit, function()
-			press(gui)
-			fn()
-		end)
+		pressFx(hit, { target = gui, alpha = 0.82 })
+		onClick(hit, fn)
 		return hit
 	end
 
@@ -2196,6 +2269,7 @@ function Window:CreateDashboard(opts)
 		new("TextLabel", { Text = opts.Discord, Fg = "Text", TextSize = 11, Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -34, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = invite })
 		makeIcon(invite, "copy", 13, "SubText", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -9, 0.5, 0) })
 		local hz = hitZone(disc, { ZIndex = 6 })
+		pressFx(hz, { target = disc, alpha = 0.9 })
 		onClick(hz, function()
 			local ok = copy(opts.Discord)
 			discSub.Text = ok and "Invite copied!" or "Clipboard not supported"
@@ -2265,6 +2339,8 @@ function Window:CreateDashboard(opts)
 			loading = false
 		end)
 	end
+	local rsc = new("UIScale", { Parent = refreshIcon })
+	pressFx(refreshBtn, { target = refreshIcon, scale = rsc, down = 0.7, noFlash = true })
 	onClick(refreshBtn, loadFriends)
 
 	local perfCard = panel(rowC, UDim2.new(0.5, -4, 1, 0), UDim2.new(0.5, 4, 0, 0))
@@ -2288,6 +2364,7 @@ function Window:CreateDashboard(opts)
 		local lbl = new("TextLabel", { Text = m.label, Font = FONT_BOLD, TextSize = 9, Fg = "SubText", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = box })
 		pills[i] = { box = box, lbl = lbl }
 		local hz = hitZone(box, { ZIndex = 6 })
+		pressFx(hz, { target = box, alpha = 0.8 })
 		onClick(hz, function()
 			mode = i
 			paintPills()
@@ -2612,6 +2689,8 @@ function Library:Confirm(o)
 	escCon = UserInputService.InputBegan:Connect(function(i)
 		if i.KeyCode == Enum.KeyCode.Escape then close(o.OnCancel) end
 	end)
+	pressFx(cancel, { target = cancel, alpha = 0.8 })
+	pressFx(ok, { target = ok, color = function() return Color3.new(1, 1, 1) end, alpha = 0.78 })
 	onClick(blocker, function() close(o.OnCancel) end)
 	onClick(cancel, function() close(o.OnCancel) end, true)
 	onClick(ok, function() close(o.Callback) end, true)
@@ -2753,8 +2832,11 @@ function Library:CreateWindow(opts)
 				tween(bsc, { Scale = 1 }, 0.2)
 				tint(Theme.SubText, 0.2)
 			end)
-		connect(hit.MouseButton1Down, function() tween(bsc, { Scale = 0.9 }, 0.06) end)
-		connect(hit.MouseButton1Up, function() tween(bsc, { Scale = 1 }, 0.12, Enum.EasingStyle.Quad) end)
+		pressFx(hit, {
+			target = b, scale = bsc, down = 0.84, alpha = 0.8,
+			rest = function() return IS_TOUCH and 1 or 1.08 end,
+			color = function() return hoverColor or Theme.Text end,
+		})
 		onClick(hit, fn, true)
 		return slot
 	end
@@ -2870,16 +2952,81 @@ function Library:CreateWindow(opts)
 		onHover(fhit,
 			function() tween(fsc, { Scale = 1.08 }, 0.15, Enum.EasingStyle.Quad) end,
 			function() tween(fsc, { Scale = 1 }, 0.2) end)
-		connect(fhit.MouseButton1Down, function() tween(fsc, { Scale = 0.9 }, 0.08) end)
-		connect(fhit.MouseButton1Up, function() tween(fsc, { Scale = IS_TOUCH and 1 or 1.08 }, 0.12, Enum.EasingStyle.Quad) end)
+		local waves = {}
+		for k = 1, 2 do
+			local w = new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1),
+				BackgroundTransparency = 1, ZIndex = 1, Parent = holder,
+			})
+			round(w)
+			local ws = stroke(w, "Accent", 2)
+			ws.Transparency = 1
+			waves[k] = { f = w, s = ws }
+		end
+		local SP = 8
+		local sparks = {}
+		for k = 1, SP do
+			local s = new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(4, 4),
+				Bg = "Accent", BackgroundTransparency = 1, ZIndex = 3, Parent = holder,
+			})
+			round(s)
+			sparks[k] = s
+		end
+		local csc = new("UIScale", { Parent = toggleCrown })
+		local spinTok = 0
+		local function burst(opening)
+			ripple.Size = UDim2.fromScale(1, 1)
+			ripple.BackgroundTransparency = opening and 0.5 or 0.7
+			local rs = opening and 1.9 or 1.5
+			tween(ripple, { Size = UDim2.fromScale(rs, rs), BackgroundTransparency = 1 }, 0.5, Enum.EasingStyle.Quad)
+			for k, w in ipairs(waves) do
+				task.delay((k - 1) * 0.09, function()
+					if not w.f.Parent then return end
+					local from = opening and 1 or 2.1
+					local to = opening and 2.2 or 1
+					w.f.Size = UDim2.fromScale(from, from)
+					w.s.Transparency = opening and 0.1 or 0.6
+					tween(w.f, { Size = UDim2.fromScale(to, to) }, 0.55, Enum.EasingStyle.Quint)
+					tween(w.s, { Transparency = 1 }, 0.55, Enum.EasingStyle.Quad)
+				end)
+			end
+			local off = opening and 0 or math.pi / SP
+			local r0, r1 = opening and 20 or 36, opening and 36 or 20
+			for k, s in ipairs(sparks) do
+				local a = (k - 1) * (2 * math.pi / SP) + off
+				local cx, cy = math.cos(a), math.sin(a)
+				local s0 = opening and 5 or 3
+				local s1 = opening and 2 or 4
+				s.Position = UDim2.new(0.5, cx * r0, 0.5, cy * r0)
+				s.Size = UDim2.fromOffset(s0, s0)
+				s.BackgroundTransparency = opening and 0.1 or 0.5
+				tween(s, {
+					Position = UDim2.new(0.5, cx * r1, 0.5, cy * r1), BackgroundTransparency = 1, Size = UDim2.fromOffset(s1, s1),
+				}, 0.5, Enum.EasingStyle.Quint)
+			end
+			spinTok += 1
+			local tok = spinTok
+			toggleCrown.Rotation = 0
+			csc.Scale = 0.6
+			tween(csc, { Scale = 1 }, 0.5, Enum.EasingStyle.Back)
+			tween(toggleCrown, { Rotation = opening and 360 or -360 }, 0.55, Enum.EasingStyle.Quint)
+			task.delay(0.6, function()
+				if tok == spinTok and toggleCrown.Parent then toggleCrown.Rotation = 0 end
+			end)
+			tween(fst, { Thickness = 3 }, 0.07, Enum.EasingStyle.Quad)
+			task.delay(0.07, function()
+				if fst.Parent then tween(fst, { Thickness = 1.5 }, 0.35, Enum.EasingStyle.Quad) end
+			end)
+		end
+		pressFx(fhit, {
+			target = fb, scale = fsc, down = 0.84, alpha = 0.78,
+			rest = function() return IS_TOUCH and 1 or 1.08 end,
+			color = function() return Theme.Accent end,
+		})
 		draggable(fhit, holder, function()
 			self:Toggle()
-			pulse()
-			toggleCrown.Rotation = 0
-			tween(toggleCrown, { Rotation = 360 }, 0.4, Enum.EasingStyle.Quint)
-			task.delay(0.45, function()
-				if toggleCrown.Parent then toggleCrown.Rotation = 0 end
-			end)
+			burst(self.Visible)
 		end)
 	end
 
@@ -2933,7 +3080,7 @@ if env.ZystrixUI_NoDemo or env.MystrixUI_NoDemo then return Library end
 local Window = Library:CreateWindow({
 	Title = "ZystrixUI Tester",
 	Subtitle = "Component playground",
-	Version = "v1.7",
+	Version = "v1.8",
 	ConfigFolder = "ZystrixTester",
 	ToggleKey = Enum.KeyCode.J,
 })
