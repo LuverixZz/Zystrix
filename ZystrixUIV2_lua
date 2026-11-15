@@ -86,7 +86,7 @@ for k, v in pairs(Themes.Monochrome) do Theme[k] = v end
 
 local Library = {
 	Flags = {}, Options = {}, Connections = {}, Windows = {},
-	Version = "1.8.0", ThemeName = "Monochrome",
+	Version = "1.9.0", ThemeName = "Monochrome",
 	ThemeList = { "Monochrome", "Crimson", "Ocean", "Emerald", "Violet", "Amber" },
 	Transparency = 0.1, ConfigFolder = ROOT, Listening = false,
 	Effects = true,
@@ -98,7 +98,12 @@ local Bound, Hooks, TransFrames = {}, {}, {}
 
 local function connect(signal, fn)
 	local c = signal:Connect(fn)
-	Library.Connections[#Library.Connections + 1] = c
+	local sink = Library._sink
+	if sink then
+		sink[#sink + 1] = c
+	else
+		Library.Connections[#Library.Connections + 1] = c
+	end
 	return c
 end
 
@@ -344,11 +349,62 @@ local function tintIcon(img, color, t)
 	if g then tween(g, { TextColor3 = color }, t or 0.2) end
 end
 
-local SHADOW_DY, SHADOW_TRANS, SHADOW_SCALE, SHADOW_MARGIN = 3, 0.7, 0.5, 24
-local SHADOW_IMAGE = "rbxassetid://6015897843"
-local SHADOW_SLICE = Rect.new(49, 49, 450, 450)
-local function shadowAsset()
-	return SHADOW_IMAGE
+-- Shadow procedural: cincin UIStroke bertumpuk (tebal naik, opacity tipis per lapis).
+-- Selalu simetris di semua sisi, ukurannya ikut parent, jadi aman saat minimize/maximize.
+local SHADOW_DY, SHADOW_SPREAD, SHADOW_LAYERS, SHADOW_ALPHA = 0, 30, 16, 0.028
+
+local function makeShadow(parent, radius, o)
+	o = o or {}
+	local spread = o.Spread or SHADOW_SPREAD
+	local layers = o.Layers or SHADOW_LAYERS
+	local alpha = o.Alpha or SHADOW_ALPHA
+	local dy = o.Offset or SHADOW_DY
+
+	local holder = Instance.new("Frame")
+	holder.Name = "Shadow"
+	holder.BackgroundTransparency = 1
+	holder.BorderSizePixel = 0
+	holder.Active = false
+	holder.AnchorPoint = Vector2.new(0.5, 0.5)
+	holder.Position = UDim2.new(0.5, 0, 0.5, dy)
+	holder.Size = UDim2.fromScale(1, 1)
+	holder.ZIndex = 0
+	holder.Parent = parent
+
+	local strokes = {}
+	for i = 1, layers do
+		local ring = Instance.new("Frame")
+		ring.Name = "Layer" .. i
+		ring.BackgroundTransparency = 1
+		ring.BorderSizePixel = 0
+		ring.Active = false
+		ring.Size = UDim2.fromScale(1, 1)
+		ring.ZIndex = 0
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0, radius)
+		c.Parent = ring
+		local st = Instance.new("UIStroke")
+		st.Color = Color3.new(0, 0, 0)
+		st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		st.Thickness = 1 + (spread - 1) * (((i - 1) / math.max(layers - 1, 1)) ^ 1.7)
+		st.Transparency = 1 - alpha
+		st.Parent = ring
+		ring.Parent = holder
+		strokes[i] = st
+	end
+
+	local obj = { Holder = holder }
+	function obj:Set(visible)
+		for _, st in ipairs(strokes) do
+			st.Transparency = visible and (1 - alpha) or 1
+		end
+	end
+	function obj:Fade(visible, time, style)
+		for _, st in ipairs(strokes) do
+			tween(st, { Transparency = visible and (1 - alpha) or 1 }, time or 0.3, style or Enum.EasingStyle.Quad)
+		end
+	end
+	return obj
 end
 local function iconTile(parent, spec, tile, size, props, static)
 	local p = { Size = UDim2.fromOffset(tile, tile), Parent = parent }
@@ -705,7 +761,7 @@ new("UIListLayout", {
 	Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder,
 	VerticalAlignment = Enum.VerticalAlignment.Bottom, HorizontalAlignment = Enum.HorizontalAlignment.Right, Parent = NotifHolder,
 })
-local NotifToasts, NotifSerial, NotifShadow = {}, 0, nil
+local NotifToasts, NotifSerial = {}, 0
 
 function Library:Notify(o)
 	o = o or {}
@@ -717,16 +773,7 @@ function Library:Notify(o)
 	local mover = new("Frame", {
 		Position = UDim2.fromOffset(NOTIFY_OFF, 0), Size = UDim2.new(1, 0, 0, 64), Parent = slot,
 	})
-	NotifShadow = NotifShadow == nil and (shadowAsset() or false) or NotifShadow
-	if NotifShadow then
-		new("ImageLabel", {
-			Name = "Shadow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 3),
-			Size = UDim2.new(1, 40, 1, 40), Image = NotifShadow, ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = 0.8,
-			ScaleType = Enum.ScaleType.Slice,
-			SliceCenter = SHADOW_SLICE,
-			SliceScale = SHADOW_SCALE, ZIndex = 0, Parent = mover,
-		})
-	end
+	makeShadow(mover, 12, { Spread = 12, Layers = 8, Alpha = 0.04 })
 	local toast = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", Parent = mover })
 	corner(toast, 12)
 	local tstroke = stroke(toast)
@@ -900,6 +947,15 @@ local function makeRow(sec, height, bgKey)
 	return row
 end
 
+-- Daftarkan elemen ke index search milik window
+local function indexItem(sec, name, kind, row, icon)
+	local tab = sec.Tab
+	local win = tab and tab.Window
+	if win and win._register then
+		win:_register({ Name = name, Kind = kind, Tab = tab, Section = sec, Row = row, Icon = icon })
+	end
+end
+
 local function rowLabel(row, text, width, shift)
 	shift = shift or 0
 	width = width or UDim2.new(1, -24, 1, 0)
@@ -972,6 +1028,7 @@ local function restHover() return Theme.Hover end
 
 function Section:AddToggle(o)
 	local row = makeRow(self, 40)
+	indexItem(self, o.Name, "Toggle", row, o.Icon)
 	rowLabel(row, o.Name, UDim2.new(1, -90, 1, 0), rowIcon(row, o.Icon))
 
 	local PW, PH, KS, PAD = 46, 24, 18, 3
@@ -1106,6 +1163,7 @@ function Section:AddSlider(o)
 	if frac then decimals = #frac end
 
 	local row = makeRow(self, 48)
+	indexItem(self, o.Name, "Slider", row, o.Icon)
 	local sh = rowIcon(row, o.Icon, 17)
 	rowLabel(row, o.Name, UDim2.new(1, -86, 0, 26), sh).Position = UDim2.fromOffset(12 + sh, 4)
 	local valueLbl
@@ -1281,6 +1339,7 @@ end
 
 function Section:AddDropdown(o)
 	local row = makeRow(self, 36)
+	indexItem(self, o.Name, "Dropdown", row, o.Icon)
 	rowLabel(row, o.Name, SIDE_LABEL, rowIcon(row, o.Icon))
 	local box = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = SIDE_BOX, Bg = "Hover", Parent = row })
 	corner(box, 6)
@@ -1437,6 +1496,7 @@ end
 function Section:AddButton(o)
 	local primary = o.Style == "Primary"
 	local row = makeRow(self, primary and 38 or 40, primary and "Text" or "Element")
+	indexItem(self, o.Name, "Button", row, o.Icon)
 	local hit, target, lbl, iconImg
 
 	if primary then
@@ -1517,6 +1577,7 @@ end
 
 function Section:AddTextbox(o)
 	local row = makeRow(self, 36)
+	indexItem(self, o.Name, "Textbox", row, o.Icon)
 	rowLabel(row, o.Name, SIDE_LABEL, rowIcon(row, o.Icon))
 	local zone = hitZone(row, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.new(0.5, 0, 1, 0) })
 	local tb = new("TextBox", {
@@ -1561,6 +1622,7 @@ end
 
 function Section:AddKeybind(o)
 	local row = makeRow(self, 36)
+	indexItem(self, o.Name, "Keybind", row, o.Icon)
 	rowLabel(row, o.Name, UDim2.new(1, -118, 1, 0), rowIcon(row, o.Icon))
 	local zone = hitZone(row, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.fromOffset(HIT_W, 36) })
 	local btn = new("TextButton", {
@@ -1742,7 +1804,7 @@ function Tab:AddSection(o)
 	local layout = listLayout(content, 5)
 
 	local sec = setmetatable({
-		Tab = self, Content = content, Scroll = self.Scroll, Order = 0,
+		Tab = self, Name = o.Name or "Section", Content = content, Scroll = self.Scroll, Order = 0,
 		Collapsed = o.Collapsed and true or false, _tok = 0,
 	}, Section)
 
@@ -1771,14 +1833,22 @@ function Tab:AddSection(o)
 			end)
 		end
 	end
+	function sec:SetCollapsed(v)
+		v = v and true or false
+		if self.Collapsed == v then return end
+		self.Collapsed = v
+		tween(chev, { Rotation = v and 0 or 180 }, 0.4, Enum.EasingStyle.Back)
+		apply()
+	end
 	onClick(hz, function(pos)
-		sec.Collapsed = not sec.Collapsed
 		FX.ripple(header, pos, Theme.Accent, { Radius = 10, Alpha = 0.85, Time = 0.55 })
-		tween(chev, { Rotation = sec.Collapsed and 0 or 180 }, 0.4, Enum.EasingStyle.Back)
 		if secBox then FX.pop(secBox, 1.3, 0.45) end
 		closePopup()
-		apply()
+		sec:SetCollapsed(not sec.Collapsed)
 	end)
+	if self.Window and self.Window._register then
+		self.Window:_register({ Name = sec.Name, Kind = "Section", Tab = self, Section = sec, Row = card, Icon = o.Icon })
+	end
 	return sec
 end
 
@@ -1941,6 +2011,7 @@ function Window:AddTab(opts)
 		end
 	end)
 
+	self:_register({ Name = tab.Name, Kind = "Tab", Tab = tab, Icon = opts.Icon })
 	if isSub then relayoutSub(parentTab) end
 	table.insert(self.Tabs, tab)
 	if not self.Current and tab.Page then self:SelectTab(tab, true) end
@@ -1954,7 +2025,12 @@ function Tab:AddSubTab(opts)
 end
 
 function Window:SelectTab(tab, instant)
-	if self.Current == tab or not tab.Page then return end
+	if not tab.Page then return end
+	if self.SearchOpen then
+		self:ClearSearch(true)
+		if self.Current == tab then self:_restorePage() end
+	end
+	if self.Current == tab then return end
 	closePopup()
 	if SliderLock.Active then pcall(SliderLock.Active) end
 	local old = self.Current
@@ -1994,23 +2070,362 @@ function Window:SelectTab(tab, instant)
 	end
 end
 
-function Window:_filter(q)
-	q = q:lower()
-	self.Searching = q ~= ""
-	for _, gl in ipairs(self.GroupLabels) do gl.Visible = not self.Searching end
-	for _, t in ipairs(self.Tabs) do
-		if not t.ParentTab then
-			local selfMatch = (q == "") or (t.Name:lower():find(q, 1, true) ~= nil)
-			local any = false
-			for _, c in ipairs(t.Children) do
-				local m = (q == "") or selfMatch or (c.Name:lower():find(q, 1, true) ~= nil)
-				c.Button.Visible = m
-				if m then any = true end
+-- =====================================================================
+-- SEARCH: index semua tab / section / elemen, halaman hasil, navigasi
+-- =====================================================================
+local KIND_LABEL = {
+	Toggle = "Switch", Slider = "Slider", Dropdown = "Dropdown", Button = "Button", Textbox = "Input",
+	Keybind = "Keybind", Tab = "Tab", Section = "Section", Action = "Action", Card = "Card",
+}
+local KIND_ICON = {
+	Toggle = "toggle", Slider = "slider", Dropdown = "list", Button = "click", Textbox = "input",
+	Keybind = "keyboard", Tab = "grid", Section = "columns", Action = "bolt", Card = "grid",
+}
+local KIND_RANK = { Tab = 1, Section = 2, Card = 2, Action = 3 }
+local MAX_RESULTS = 40
+
+local function esc(s)
+	return (tostring(s):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
+end
+
+local function markMatch(name, token)
+	if not token or token == "" then return esc(name) end
+	local s, e = name:lower():find(token, 1, true)
+	if not s then return esc(name) end
+	return esc(name:sub(1, s - 1))
+		.. '<font color="#' .. Theme.Accent:ToHex() .. '"><b>' .. esc(name:sub(s, e)) .. "</b></font>"
+		.. esc(name:sub(e + 1))
+end
+
+local function pathOf(it)
+	local parts = {}
+	local t = it.Tab
+	if t and t.ParentTab then parts[#parts + 1] = t.ParentTab.Name end
+	if t and it.Kind ~= "Tab" then parts[#parts + 1] = t.Name end
+	if it.Extra then
+		parts[#parts + 1] = it.Extra
+	elseif it.Section and it.Kind ~= "Section" and it.Section.Name then
+		parts[#parts + 1] = it.Section.Name
+	end
+	if #parts == 0 then return "Page" end
+	return table.concat(parts, "  /  ")
+end
+
+local function flashRow(obj)
+	if not obj or not obj.Parent then return end
+	local rest = obj.BackgroundColor3
+	local hot = rest:Lerp(Theme.Accent, 0.3)
+	for k = 0, 1 do
+		task.delay(k * 0.45, function()
+			if not obj.Parent then return end
+			tween(obj, { BackgroundColor3 = hot }, 0.12, Enum.EasingStyle.Quad)
+			task.delay(0.14, function()
+				if obj.Parent then tween(obj, { BackgroundColor3 = rest }, 0.3, Enum.EasingStyle.Quad) end
+			end)
+		end)
+	end
+	-- card Section punya UIListLayout; layer efek akan ikut ke-layout dan merusak isi, jadi dilewati
+	if not obj:FindFirstChildOfClass("UIListLayout") then
+		FX.ripple(obj, nil, Theme.Accent, { Radius = 10, Alpha = 0.78, Time = 0.7 })
+	end
+end
+
+function Window:_register(it)
+	if not it or not it.Name or tostring(it.Name) == "" then return end
+	it.Name = tostring(it.Name)
+	it.Lower = it.Name:lower()
+	self.Index[#self.Index + 1] = it
+end
+
+function Window:_search(q)
+	local tokens = {}
+	for w in q:gmatch("%S+") do tokens[#tokens + 1] = w end
+	local out = {}
+	if #tokens == 0 then return out end
+	for _, it in ipairs(self.Index) do
+		if not it.Row or it.Row.Parent then
+			local name = it.Lower
+			local kind = (KIND_LABEL[it.Kind] or it.Kind):lower()
+			local score, ok = 0, true
+			for _, tk in ipairs(tokens) do
+				local p = name:find(tk, 1, true)
+				if p then
+					local s = 40
+					if name == tk then
+						s = 100
+					elseif p == 1 then
+						s = 80
+					elseif name:sub(p - 1, p - 1):match("[%s%p]") then
+						s = 60
+					end
+					score += s
+				elseif kind:find(tk, 1, true) == 1 then
+					score += 10
+				else
+					ok = false
+					break
+				end
 			end
-			t.Holder.Visible = selfMatch or any
-			relayoutSub(t)
+			if ok then
+				out[#out + 1] = {
+					Name = it.Name, Kind = it.Kind, Tab = it.Tab, Section = it.Section, Row = it.Row,
+					Icon = it.Icon, Extra = it.Extra, Score = score, Mark = tokens[1],
+				}
+			end
 		end
 	end
+	table.sort(out, function(a, b)
+		if a.Score ~= b.Score then return a.Score > b.Score end
+		local ra, rb = KIND_RANK[a.Kind] or 9, KIND_RANK[b.Kind] or 9
+		if ra ~= rb then return ra < rb end
+		return a.Name:lower() < b.Name:lower()
+	end)
+	while #out > MAX_RESULTS do table.remove(out) end
+	return out
+end
+
+function Window:_paintSel(scrollTo)
+	if not IS_TOUCH then
+		for i, row in ipairs(self._srRows) do
+			local on = i == self._sel
+			tween(row.Frame, { BackgroundColor3 = on and Theme.Hover or Theme.Element }, 0.12)
+			tween(row.Stroke, { Color = on and Theme.Accent or Theme.Stroke }, 0.12)
+		end
+	end
+	local row, sc = self._srRows[self._sel], self.SearchScroll
+	if scrollTo and row and sc then
+		local s = math.max(getScale(), 0.05)
+		local top = (row.Frame.AbsolutePosition.Y - sc.AbsolutePosition.Y) / s
+		local h = row.Frame.AbsoluteSize.Y / s
+		local view = sc.AbsoluteWindowSize.Y / s
+		local cp = sc.CanvasPosition.Y
+		if top < 12 then
+			cp = cp + top - 12
+		elseif top + h > view - 12 then
+			cp = cp + top + h - view + 12
+		end
+		tween(sc, { CanvasPosition = Vector2.new(0, math.max(cp, 0)) }, 0.15, Enum.EasingStyle.Quad)
+	end
+end
+
+function Window:_moveSel(d)
+	local n = #self._srRows
+	if n == 0 then return end
+	self._sel = ((self._sel - 1 + d) % n) + 1
+	self:_paintSel(true)
+end
+
+function Window:_renderResults(q, results)
+	local scroll = self.SearchScroll
+	if not scroll then return end
+	for _, c in ipairs(self._srConns) do pcall(function() c:Disconnect() end) end
+	self._srConns = {}
+	for _, r in ipairs(self._srRows) do pcall(function() r.Frame:Destroy() end) end
+	if self._srEmpty then
+		pcall(function() self._srEmpty:Destroy() end)
+		self._srEmpty = nil
+	end
+	self._srRows = {}
+	prune()
+	self._sel = 1
+
+	local n = #results
+	self.SearchInfo.Text = n == 0 and ('Nothing found for "' .. q .. '"')
+		or string.format('%d result%s for "%s"', n, n == 1 and "" or "s", q)
+
+	Library._sink = self._srConns
+	local ok, err = pcall(function()
+		if n == 0 then
+			local empty = new("Frame", { Size = UDim2.new(1, 0, 0, 150), LayoutOrder = 1, Parent = scroll })
+			local box = iconTile(empty, "search", 44, 24, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 26) })
+			new("TextLabel", {
+				Text = "No matches", Font = FONT_BOLD, TextSize = 14, Fg = "Text", AnchorPoint = Vector2.new(0.5, 0),
+				Position = UDim2.new(0.5, 0, 0, 82), Size = UDim2.new(1, 0, 0, 18), TextXAlignment = Enum.TextXAlignment.Center, Parent = empty,
+			})
+			new("TextLabel", {
+				Text = "Try another word: a tab, a section or a setting name.", Fg = "SubText", TextSize = 11, TextWrapped = true,
+				AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 102), Size = UDim2.new(1, -40, 0, 30),
+				TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, Parent = empty,
+			})
+			FX.pop(box, 0.6, 0.5)
+			self._srEmpty = empty
+			return
+		end
+		for i, r in ipairs(results) do
+			local f = new("Frame", { Size = UDim2.new(1, 0, 0, 46), Bg = "Element", LayoutOrder = i, Parent = scroll })
+			corner(f, 10)
+			local st = stroke(f)
+			gradient(f, 205)
+			iconTile(f, r.Icon or KIND_ICON[r.Kind] or "info", 28, 15, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 9, 0.5, 0) })
+			new("TextLabel", {
+				RichText = true, Text = markMatch(r.Name, r.Mark), Fg = "Text", TextSize = 13, Position = UDim2.fromOffset(46, 6),
+				Size = UDim2.new(1, -(46 + 96), 0, 17), TextTruncate = Enum.TextTruncate.AtEnd, Parent = f,
+			})
+			new("TextLabel", {
+				Text = pathOf(r), Fg = "SubText", TextSize = 10, Position = UDim2.fromOffset(46, 24),
+				Size = UDim2.new(1, -(46 + 96), 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, Parent = f,
+			})
+			local badge = new("TextLabel", {
+				Text = KIND_LABEL[r.Kind] or r.Kind, Font = FONT_BOLD, TextSize = 9, Fg = "SubText", Bg = "Hover",
+				AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(0, 18),
+				AutomaticSize = AutoX, TextXAlignment = Enum.TextXAlignment.Center, Parent = f,
+			})
+			round(badge)
+			padding(badge, 8, 0, 8, 0)
+			local hit = hitZone(f, { ZIndex = 6 })
+			onHover(hit,
+				function()
+					self._sel = i
+					self:_paintSel(false)
+				end,
+				function() end)
+			onClick(hit, function(pos)
+				FX.ripple(f, pos, Theme.Accent, { Radius = 10, Alpha = 0.8, Time = 0.45 })
+				self:_goto(r)
+			end)
+			self._srRows[i] = { Frame = f, Stroke = st }
+		end
+		self:_paintSel(false)
+	end)
+	Library._sink = nil
+	if not ok then warn("[ZystrixUI] search render: " .. tostring(err)) end
+end
+
+function Window:_restorePage()
+	local cur = self.Current
+	if cur and cur.Page then
+		cur.Page.Visible = true
+		tween(cur.Page, { GroupTransparency = 0 }, 0.24, Enum.EasingStyle.Quad)
+	end
+end
+
+function Window:_openSearchPage()
+	local sp = self.SearchPage
+	if not sp or self.SearchOpen then return end
+	self.SearchOpen = true
+	self._srTok += 1
+	local tok = self._srTok
+	local cur = self.Current
+	if cur and cur.Page then
+		tween(cur.Page, { GroupTransparency = 1 }, 0.16, Enum.EasingStyle.Quad)
+		task.delay(0.17, function()
+			if self._srTok == tok and self.SearchOpen and self.Current == cur then cur.Page.Visible = false end
+		end)
+	end
+	closePopup()
+	sp.Visible = true
+	sp.Position = UDim2.new(0.5, 0, 0.5, 12)
+	tween(sp, { GroupTransparency = 0, Position = PAGE_REST }, 0.3, Enum.EasingStyle.Quint)
+end
+
+function Window:_closeSearchPage(restore)
+	local sp = self.SearchPage
+	if not sp or not self.SearchOpen then return end
+	self.SearchOpen = false
+	self._srTok += 1
+	local tok = self._srTok
+	tween(sp, { GroupTransparency = 1, Position = UDim2.new(0.5, 0, 0.5, 8) }, 0.18, Enum.EasingStyle.Quad)
+	task.delay(0.2, function()
+		if self._srTok == tok and not self.SearchOpen then
+			sp.Visible = false
+			sp.Position = PAGE_REST
+		end
+	end)
+	if restore then self:_restorePage() end
+end
+
+function Window:ClearSearch(noRestore)
+	if self.SearchOpen then self:_closeSearchPage(not noRestore) end
+	if self.SearchBox and self.SearchBox.Text ~= "" then self.SearchBox.Text = "" end
+	self:_filter("")
+end
+
+function Window:_reveal(r)
+	local tab, target, sec = r.Tab, r.Row, r.Section
+	if not tab or not target or not target.Parent then return end
+	local wait = 0.45
+	if sec and sec.Collapsed and sec.SetCollapsed then
+		sec:SetCollapsed(false)
+		wait = 0.75
+	end
+	task.delay(wait, function()
+		local scroll = tab.Scroll
+		if not (scroll and target.Parent and tab.Active) then return end
+		local s = math.max(getScale(), 0.05)
+		local dy = (target.AbsolutePosition.Y - scroll.AbsolutePosition.Y) / s
+		local ny = math.max(0, scroll.CanvasPosition.Y + dy - 14)
+		tween(scroll, { CanvasPosition = Vector2.new(0, ny) }, 0.4, Enum.EasingStyle.Quint)
+		task.delay(0.3, function() flashRow(target) end)
+	end)
+end
+
+function Window:_goto(r)
+	local tab = r.Tab
+	if not tab then return end
+	if self.SearchBox then pcall(function() self.SearchBox:ReleaseFocus() end) end
+	self:ClearSearch(true)
+	if self.Minimized then self:SetMinimized(false) end
+	if not tab.Page then
+		tab = tab.Children[1]
+		if not tab then return end
+	end
+	if tab.ParentTab and not tab.ParentTab.Expanded then Library._toggleSub(tab.ParentTab) end
+	if self.Current == tab then
+		self:_restorePage()
+	else
+		self:SelectTab(tab)
+	end
+	if r.Row then
+		self:_reveal({ Tab = tab, Row = r.Row, Section = r.Section })
+	end
+end
+
+function Window:_filter(q)
+	q = (tostring(q or ""):lower():gsub("^%s+", ""):gsub("%s+$", ""))
+	if q == self._lastQ then return end
+	self._lastQ = q
+	local searching = q ~= ""
+	self.Searching = searching
+	for _, gl in ipairs(self.GroupLabels) do gl.Visible = not searching end
+
+	if not searching then
+		for _, t in ipairs(self.Tabs) do
+			if not t.ParentTab then
+				t.Holder.Visible = true
+				for _, c in ipairs(t.Children) do c.Button.Visible = true end
+				relayoutSub(t)
+			end
+		end
+		self.SearchResults = {}
+		self:_closeSearchPage(true)
+		return
+	end
+
+	local results = self:_search(q)
+	self.SearchResults = results
+	local anyHit, nameHit = {}, {}
+	for _, r in ipairs(results) do
+		if r.Tab then
+			anyHit[r.Tab] = true
+			if r.Kind == "Tab" then nameHit[r.Tab] = true end
+		end
+	end
+	for _, t in ipairs(self.Tabs) do
+		if not t.ParentTab then
+			local childAny = false
+			for _, c in ipairs(t.Children) do
+				local show = (anyHit[c] or nameHit[t]) and true or false
+				c.Button.Visible = show
+				if anyHit[c] then childAny = true end
+			end
+			t.Holder.Visible = (anyHit[t] or nameHit[t] or childAny) and true or false
+		end
+	end
+	for _, t in ipairs(self.Tabs) do
+		if not t.ParentTab then relayoutSub(t) end
+	end
+	self:_openSearchPage()
+	self:_renderResults(q, results)
 end
 
 function Window:SetMinimized(state)
@@ -2023,13 +2438,19 @@ function Window:SetMinimized(state)
 	self._minTok = (self._minTok or 0) + 1
 	local tok = self._minTok
 
-	local delta = (BASE_H - (HEADER_H + 1)) * getScale() / 2
-	local p = self.Main.Position
-	local ny = state and (p.Y.Offset - delta) or (p.Y.Offset + delta)
+	-- Posisi dihitung dari TARGET tween sebelumnya (bukan posisi di tengah animasi),
+	-- supaya klik minimize/restore berkali-kali tidak bikin window dan bayangan geser.
+	local delta = (BASE_H - (HEADER_H + 1)) * ScaleObj.Scale / 2
+	local p = (self._minBusy and self._posGoal) or self.Main.Position
+	local goal = UDim2.new(p.X.Scale, p.X.Offset, p.Y.Scale, state and (p.Y.Offset - delta) or (p.Y.Offset + delta))
+	self._posGoal, self._minBusy = goal, true
+	task.delay(0.5, function()
+		if self._minTok == tok then self._minBusy = false end
+	end)
 	if not state then self.Body.Visible = true end
 	tween(self.Main, {
 		Size = UDim2.fromOffset(BASE_W, state and (HEADER_H + 1) or BASE_H),
-		Position = UDim2.new(p.X.Scale, p.X.Offset, p.Y.Scale, ny),
+		Position = goal,
 	}, 0.38, state and Enum.EasingStyle.Quint or Enum.EasingStyle.Back)
 	if state then
 		task.delay(0.36, function()
@@ -2044,6 +2465,7 @@ function Window:SetMaximized(state)
 	closePopup()
 	if SliderLock.Active then pcall(SliderLock.Active) end
 	self.Maximized = state
+	self._minBusy = false
 	if self.Minimized then
 		self.Minimized = false
 		self._minTok = (self._minTok or 0) + 1
@@ -2064,8 +2486,8 @@ function Window:Toggle(state)
 	self._tgTok = (self._tgTok or 0) + 1
 	local tok = self._tgTok
 	local target = self.Maximized and maxScale() or fitScale()
-	local main, canvas, rim, shadow, ctrls = self.Main, self.Canvas, self.OutlineStroke, self.ShadowObj, self.Ctrls
-	if not self._restPos then self._restPos = main.Position end
+	local main, canvas, rim, shadow, ctrls = self.Main, self.Canvas, self.OutlineStroke, self.Shadow, self.Ctrls
+	if not self._restPos then self._restPos = (self._minBusy and self._posGoal) or main.Position end
 	local rest = self._restPos
 	local lowered = UDim2.new(rest.X.Scale, rest.X.Offset, rest.Y.Scale, rest.Y.Offset + 22)
 	if state then
@@ -2074,13 +2496,13 @@ function Window:Toggle(state)
 		ScaleObj.Scale = target * 0.86
 		canvas.GroupTransparency = 1
 		if rim then rim.Transparency = 1 end
-		if shadow then shadow.ImageTransparency = 1 end
+		if shadow then shadow:Set(false) end
 		if ctrls then ctrls.Visible = false end
 		tween(main, { Position = rest }, 0.5, Enum.EasingStyle.Quint)
 		tween(ScaleObj, { Scale = target }, 0.45, Enum.EasingStyle.Back)
 		tween(canvas, { GroupTransparency = 0 }, 0.26, Enum.EasingStyle.Quad)
 		if rim then tween(rim, { Transparency = 0 }, 0.35, Enum.EasingStyle.Quad) end
-		if shadow then tween(shadow, { ImageTransparency = SHADOW_TRANS }, 0.4, Enum.EasingStyle.Quad) end
+		if shadow then shadow:Fade(true, 0.4) end
 		task.delay(0.12, function()
 			if self._tgTok == tok and ctrls then ctrls.Visible = true end
 		end)
@@ -2093,7 +2515,7 @@ function Window:Toggle(state)
 		tween(ScaleObj, { Scale = target * 0.86 }, 0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 		tween(canvas, { GroupTransparency = 1 }, 0.2, Enum.EasingStyle.Quad)
 		if rim then tween(rim, { Transparency = 1 }, 0.2, Enum.EasingStyle.Quad) end
-		if shadow then tween(shadow, { ImageTransparency = 1 }, 0.2, Enum.EasingStyle.Quad) end
+		if shadow then shadow:Fade(false, 0.2) end
 		task.delay(0.23, function()
 			if self._tgTok == tok and not self.Visible then
 				main.Visible = false
@@ -2392,6 +2814,7 @@ function Window:CreateDashboard(opts)
 
 	local rowB = row(202, 2)
 	local serverCard = panel(rowB, UDim2.new(0.56, -4, 1, 0))
+	win:_register({ Name = "Server", Kind = "Card", Tab = tab, Row = serverCard, Icon = "server", Extra = "Dashboard" })
 	head(serverCard, "server", "Server")
 
 	local sg = grid(serverCard, 2, TILE_H, UDim2.fromOffset(10, 40), UDim2.new(1, -20, 0, TILE_H * 3 + GAP * 2))
@@ -2420,6 +2843,7 @@ function Window:CreateDashboard(opts)
 	local hasDisc = type(opts.Discord) == "string" and opts.Discord ~= ""
 	local rc = new("Frame", { Position = UDim2.new(0.56, 4, 0, 0), Size = UDim2.new(0.44, -4, 1, 0), Parent = rowB })
 	local exCard = panel(rc, UDim2.new(1, 0, 0, hasDisc and 97 or 202))
+	win:_register({ Name = "Executor", Kind = "Card", Tab = tab, Row = exCard, Icon = "cpu", Extra = "Dashboard" })
 
 	local exName, exVer = "Unknown", "Executor"
 	if identifyexecutor then
@@ -2505,6 +2929,7 @@ function Window:CreateDashboard(opts)
 
 	local rowC = row(152, 3)
 	local frCard = panel(rowC, UDim2.new(0.5, -4, 1, 0))
+	win:_register({ Name = "Friends", Kind = "Card", Tab = tab, Row = frCard, Icon = "users", Extra = "Dashboard" })
 	local fh = head(frCard, "users", "Friends", 40)
 	local refreshBtn = hitZone(fh, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(34, 30) })
 	local refreshIcon = makeIcon(fh, "refresh", 14, "SubText", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -16, 0.5, 0) })
@@ -2557,6 +2982,7 @@ function Window:CreateDashboard(opts)
 	end)
 
 	local perfCard = panel(rowC, UDim2.new(0.5, -4, 1, 0), UDim2.new(0.5, 4, 0, 0))
+	win:_register({ Name = "Monitor", Kind = "Card", Tab = tab, Row = perfCard, Icon = "pulse", Extra = "Dashboard" })
 	local ph = head(perfCard, "pulse", "Monitor", 100)
 	local modes = {
 		{ key = "fps", label = "FPS" }, { key = "ping", label = "PING" }, { key = "mem", label = "MEM" },
@@ -2730,6 +3156,7 @@ function Window:CreateDashboard(opts)
 	D.Actions = {}
 	for i, a in ipairs(actions) do
 		local f = new("Frame", { Bg = "Element", LayoutOrder = i, Parent = ag })
+		win:_register({ Name = a.Name, Kind = "Action", Tab = tab, Row = f, Icon = a.Icon or "click", Extra = "Quick Actions" })
 		corner(f, 10)
 		stroke(f)
 		gradient(f, 205)
@@ -2939,6 +3366,7 @@ function Library:CreateWindow(opts)
 	opts = opts or {}
 	local self = setmetatable({
 		Tabs = {}, GroupLabels = {}, TabOrder = 0, Visible = true, Minimized = false, Maximized = false,
+		Index = {}, SearchOpen = false, SearchResults = {}, _srRows = {}, _srConns = {}, _srTok = 0, _sel = 1, _lastQ = "",
 		ToggleKey = opts.ToggleKey or Enum.KeyCode.J, Searching = false, Fps = 60, Ping = 0,
 	}, Window)
 	Library.ConfigFolder = ROOT .. "/" .. (opts.ConfigFolder or "Default")
@@ -2953,16 +3381,7 @@ function Library:CreateWindow(opts)
 	MainFrame = Main
 	self.Main = Main
 
-	local shadowImg = shadowAsset()
-	if shadowImg then
-		self.ShadowObj = new("ImageLabel", {
-			Name = "Shadow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, SHADOW_DY),
-			Size = UDim2.new(1, SHADOW_MARGIN * 2, 1, SHADOW_MARGIN * 2), Image = shadowImg,
-			ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = SHADOW_TRANS, ScaleType = Enum.ScaleType.Slice,
-			SliceCenter = SHADOW_SLICE,
-			SliceScale = SHADOW_SCALE, ZIndex = 0, Parent = Main,
-		})
-	end
+	self.Shadow = makeShadow(Main, 12)
 
 	local Canvas = new("CanvasGroup", {
 		Name = "Canvas", Size = UDim2.fromScale(1, 1), Bg = "Background", BackgroundTransparency = Library.Transparency, Parent = Main,
@@ -3089,18 +3508,44 @@ function Library:CreateWindow(opts)
 	local sst = stroke(search)
 	gradient(search, 200)
 	local searchIcon = makeIcon(search, "search", 14, "SubText", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 9, 0.5, 0) })
-	local sbox = new("TextBox", { Position = UDim2.fromOffset(30, 0), Size = UDim2.new(1, -(30 + (UserInputService.TouchEnabled and 8 or 46)), 1, 0), PlaceholderText = "Search...", Text = "", Fg = "Text", Ph = "SubText", TextSize = 12, ClipsDescendants = true, Parent = search })
+	local sbox = new("TextBox", { Position = UDim2.fromOffset(30, 0), Size = UDim2.new(1, -(30 + (UserInputService.TouchEnabled and 28 or 46)), 1, 0), PlaceholderText = "Search...", Text = "", Fg = "Text", Ph = "SubText", TextSize = 12, ClipsDescendants = true, Parent = search })
+	self.SearchBox = sbox
+	local kbdBadge
 	if not UserInputService.TouchEnabled then
-		local badge = new("TextLabel", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(0, 16), AutomaticSize = AutoX, Bg = "Hover", Text = "Ctrl K", TextSize = 9, Fg = "SubText", TextXAlignment = Enum.TextXAlignment.Center, Parent = search })
-		corner(badge, 4)
-		padding(badge, 5, 0, 5, 0)
+		kbdBadge = new("TextLabel", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(0, 16), AutomaticSize = AutoX, Bg = "Hover", Text = "Ctrl K", TextSize = 9, Fg = "SubText", TextXAlignment = Enum.TextXAlignment.Center, Parent = search })
+		corner(kbdBadge, 4)
+		padding(kbdBadge, 5, 0, 5, 0)
 	end
+	local focusBtn = hitZone(search, { Size = UDim2.fromOffset(30, 30), ZIndex = 4 })
+	onClick(focusBtn, function() sbox:CaptureFocus() end, true)
+	local clearBtn = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -5, 0.5, 0), Size = UDim2.fromOffset(20, 20), Bg = "Hover", Visible = false, ZIndex = 3, Parent = search })
+	round(clearBtn)
+	makeIcon(clearBtn, "close", 10, "SubText", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+	local clearHit = hitZone(clearBtn, { ZIndex = 6 })
+	onClick(clearHit, function()
+		FX.pop(clearBtn, 0.7, 0.35)
+		self:ClearSearch()
+	end, true)
 	connect(sbox.Focused, function()
 		tween(sst, { Color = Theme.Accent }, 0.2)
 		FX.pop(searchIcon, 1.4, 0.5)
 	end)
-	connect(sbox.FocusLost, function() tween(sst, { Color = Theme.Stroke }, 0.2) end)
-	connect(sbox:GetPropertyChangedSignal("Text"), function() self:_filter(sbox.Text) end)
+	connect(sbox.FocusLost, function(enter)
+		tween(sst, { Color = Theme.Stroke }, 0.2)
+		if enter then
+			local r = self.SearchResults[self._sel] or self.SearchResults[1]
+			if r then self:_goto(r) end
+		end
+	end)
+	connect(sbox:GetPropertyChangedSignal("Text"), function()
+		local has = sbox.Text ~= ""
+		if clearBtn.Visible ~= has then
+			clearBtn.Visible = has
+			if has then FX.pop(clearBtn, 0.6, 0.35) end
+		end
+		if kbdBadge then kbdBadge.Visible = not has end
+		self:_filter(sbox.Text)
+	end)
 
 	self.TabList = new("ScrollingFrame", {
 		Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, 0, 1, -(46 + 60)), CanvasSize = UDim2.new(),
@@ -3125,6 +3570,22 @@ function Library:CreateWindow(opts)
 	new("TextLabel", { Text = "@" .. LocalPlayer.Name, TextSize = 10, Fg = "SubText", Position = UDim2.fromOffset(44, 22), Size = UDim2.new(1, -50, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, Parent = self.UserCard })
 
 	self.Content = new("Frame", { Position = UDim2.fromOffset(SIDEBAR_W + 1, 0), Size = UDim2.new(1, -(SIDEBAR_W + 1), 1, 0), ClipsDescendants = true, Parent = Body })
+
+	-- Halaman hasil search (menimpa halaman aktif selama ada query)
+	self.SearchPage = new("CanvasGroup", {
+		Name = "SearchPage", AnchorPoint = Vector2.new(0.5, 0.5), Position = PAGE_REST, Size = UDim2.fromScale(1, 1),
+		Visible = false, GroupTransparency = 1, ZIndex = 5, Parent = self.Content,
+	})
+	self.SearchScroll = new("ScrollingFrame", {
+		Size = UDim2.fromScale(1, 1), CanvasSize = UDim2.new(), AutomaticCanvasSize = AutoY,
+		ScrollBarThickness = 3, ScrollingDirection = Enum.ScrollingDirection.Y, Sb = "Stroke", Parent = self.SearchPage,
+	})
+	padding(self.SearchScroll, 10, 10, 12, 10)
+	listLayout(self.SearchScroll, 6)
+	local sHead = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, LayoutOrder = 0, Parent = self.SearchScroll })
+	listLayout(sHead, 2)
+	new("TextLabel", { Text = "Search", Font = FONT_BOLD, TextSize = 20, Fg = "Text", Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 1, Parent = sHead })
+	self.SearchInfo = new("TextLabel", { Text = "", TextSize = 12, Fg = "SubText", Size = UDim2.new(1, 0, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 2, Parent = sHead })
 
 	if opts.ToggleButton ~= false then
 		local holder = new("Frame", {
@@ -3201,13 +3662,24 @@ function Library:CreateWindow(opts)
 		if Library.Listening then return end
 		if i.KeyCode == Enum.KeyCode.K and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
 			if not self.Visible then self:Toggle(true) end
-			if self.Minimized then self.Minimized = false self._minTok = (self._minTok or 0) + 1 self.Body.Visible = true
-				tween(self.Main, { Size = UDim2.fromOffset(BASE_W, BASE_H) }, 0.35) end
+			if self.Minimized then self:SetMinimized(false) end
 			task.defer(function()
 				sbox:CaptureFocus()
 				task.wait()
 				sbox.Text = ""
 			end)
+			return
+		end
+		if sbox:IsFocused() then
+			local kc = i.KeyCode
+			if kc == Enum.KeyCode.Down then
+				self:_moveSel(1)
+			elseif kc == Enum.KeyCode.Up then
+				self:_moveSel(-1)
+			elseif kc == Enum.KeyCode.Escape then
+				self:ClearSearch()
+				sbox:ReleaseFocus()
+			end
 			return
 		end
 		if not gp and i.KeyCode == self.ToggleKey then self:Toggle() end
@@ -3246,7 +3718,7 @@ if env.ZystrixUI_NoDemo or env.MystrixUI_NoDemo then return Library end
 local Window = Library:CreateWindow({
 	Title = "ZystrixUI Tester",
 	Subtitle = "Component playground",
-	Version = "v1.8",
+	Version = "v1.9",
 	ConfigFolder = "ZystrixTester",
 	ToggleKey = Enum.KeyCode.J,
 })
