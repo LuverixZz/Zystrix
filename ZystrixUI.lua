@@ -1,3 +1,7 @@
+-- ZystrixUI | loadstring-ready: loadstring(game:HttpGet("RAW_URL"))()
+-- Library only (no demo window): getgenv().ZystrixUI_NoDemo = true before loading.
+if not game:IsLoaded() then game.Loaded:Wait() end
+
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -6,6 +10,10 @@ local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
 local Stats = game:GetService("Stats")
 local LocalPlayer = Players.LocalPlayer
+while not LocalPlayer do
+	Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+	LocalPlayer = Players.LocalPlayer
+end
 
 local env = (getgenv and getgenv()) or _G
 if env.__MystrixUI then
@@ -4515,6 +4523,8 @@ env.__ZystrixUI = Library
 
 if env.ZystrixUI_NoDemo or env.MystrixUI_NoDemo then return Library end
 
+local function RunDemo()
+
 local Window = Library:CreateWindow({
 	Title = "ZystrixUI Tester",
 	Subtitle = "Component playground",
@@ -5063,5 +5073,9 @@ Window:CreateSettingsTab({ Group = "ACCOUNT" })
 
 Window:LoadAutoConfig()
 Library:Notify({ Title = "ZystrixUI Tester", Content = "Ready. Press J or the round button to open/close.", Duration = 5, Icon = "crown" })
+end
+
+local okDemo, errDemo = pcall(RunDemo)
+if not okDemo then warn("[ZystrixUI] demo error: " .. tostring(errDemo)) end
 
 return Library
