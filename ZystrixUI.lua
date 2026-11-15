@@ -1500,7 +1500,7 @@ function Section:AddDropdown(o)
 	end
 	onClick(hit, function(pos)
 		FX.ripple(row, pos, Theme.Accent, { Radius = 8, Alpha = 0.85 })
-		flashObj(row, "BackgroundColor3", Theme.Hover:Lerp(Theme.Accent, 0.1), restHover, 0.08, 0.4)
+		flashObj(row, "BackgroundColor3", Theme.Element:Lerp(Theme.Accent, 0.12), restElement, 0.08, 0.4)
 		if isOpen then closePopup() else open() end
 	end)
 
