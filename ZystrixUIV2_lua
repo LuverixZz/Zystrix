@@ -23,10 +23,8 @@ local TITLE_X = 54
 local TOG_SIZE = 40
 local FONT, FONT_BOLD = Enum.Font.GothamMedium, Enum.Font.GothamBold
 local ROOT = "ZystrixUI"
-local ICON_DIR = ROOT .. "/icons"
 
 local HasFS = (writefile and readfile and isfile and isfolder and makefolder) and true or false
-local getAsset = getcustomasset or getsynasset
 
 local AutoY, AutoX, AutoNone = Enum.AutomaticSize.Y, Enum.AutomaticSize.X, Enum.AutomaticSize.None
 
@@ -229,304 +227,65 @@ local function httpGet(url)
 	return nil
 end
 
-local Gen = (function()
-	local G = {}
-
-	local crcTable
-	local function crc32(s)
-		if not crcTable then
-			crcTable = {}
-			for i = 0, 255 do
-				local c = i
-				for _ = 1, 8 do
-					if bit32.band(c, 1) == 1 then
-						c = bit32.bxor(bit32.rshift(c, 1), 0xEDB88320)
-					else
-						c = bit32.rshift(c, 1)
-					end
-				end
-				crcTable[i] = c
-			end
-		end
-		local c = 0xFFFFFFFF
-		for i = 1, #s do
-			c = bit32.bxor(crcTable[bit32.band(bit32.bxor(c, string.byte(s, i)), 0xFF)], bit32.rshift(c, 8))
-		end
-		return bit32.bxor(c, 0xFFFFFFFF)
-	end
-
-	local function be32(n)
-		return string.char(
-			bit32.band(bit32.rshift(n, 24), 255), bit32.band(bit32.rshift(n, 16), 255),
-			bit32.band(bit32.rshift(n, 8), 255), bit32.band(n, 255)
-		)
-	end
-
-	local function chunk(kind, data)
-		return be32(#data) .. kind .. data .. be32(crc32(kind .. data))
-	end
-
-	local function adler32(s)
-		local a, b = 1, 0
-		for i = 1, #s do
-			a = (a + string.byte(s, i)) % 65521
-			b = (b + a) % 65521
-		end
-		return b * 65536 + a
-	end
-
-	local function zlibStored(raw)
-		local out = { "\120\1" }
-		local n, pos = #raw, 1
-		while pos <= n do
-			local len = math.min(65535, n - pos + 1)
-			local final = (pos + len > n) and 1 or 0
-			local nlen = 65535 - len
-			out[#out + 1] = string.char(final, len % 256, math.floor(len / 256), nlen % 256, math.floor(nlen / 256))
-			out[#out + 1] = string.sub(raw, pos, pos + len - 1)
-			pos = pos + len
-		end
-		out[#out + 1] = be32(adler32(raw))
-		return table.concat(out)
-	end
-
-	local function encodePNG(w, h, pix, canYield)
-		local rows = {}
-		for y = 0, h - 1 do
-			if canYield and G.yield and y % 8 == 7 then G.yield() end
-			local row = { "\0" }
-			for x = 0, w - 1 do
-				local r, g, b, a = pix(x, y)
-				row[#row + 1] = string.char(r, g, b, a)
-			end
-			rows[#rows + 1] = table.concat(row)
-		end
-		local raw = table.concat(rows)
-		local ihdr = be32(w) .. be32(h) .. "\8\6\0\0\0"
-		return "\137PNG\r\n\26\n" .. chunk("IHDR", ihdr) .. chunk("IDAT", zlibStored(raw)) .. chunk("IEND", "")
-	end
-	G.encode = encodePNG
-
-	local function smooth(t)
-		return t * t * (3 - 2 * t)
-	end
-
-	local function sdRoundBox(px, py, cx, cy, hx, hy, r)
-		local qx = math.abs(px - cx) - (hx - r)
-		local qy = math.abs(py - cy) - (hy - r)
-		local ox, oy = math.max(qx, 0), math.max(qy, 0)
-		return math.sqrt(ox * ox + oy * oy) + math.min(math.max(qx, qy), 0) - r
-	end
-
-	G.shadowSize = 96
-	G.shadowMargin = 24
-	G.shadowCenter = 47
-
-	function G.shadowPNG()
-		local N, M, R, BLUR, INNER = 96, 24, 12, 22, 12
-		local c = N / 2
-		local h = N / 2 - M
-		return encodePNG(N, N, function(x, y)
-			local d = sdRoundBox(x + 0.5, y + 0.5, c, c, h, h, R)
-			local a
-			if d >= 0 then
-				local t = math.min(d / BLUR, 1)
-				a = (1 - smooth(t)) ^ 1.6
-			else
-				local t = math.min(-d / INNER, 1)
-				a = smooth(1 - t)
-			end
-			return 0, 0, 0, math.floor(a * 255 + 0.5)
-		end)
-	end
-
-	local function primSd(p, gx, gy)
-		local k = p[1]
-		if k == "l" then
-			local ax, ay, bx, by = p[2], p[3], p[4], p[5]
-			local pax, pay, bax, bay = gx - ax, gy - ay, bx - ax, by - ay
-			local den = bax * bax + bay * bay
-			local t = 0
-			if den > 0 then t = (pax * bax + pay * bay) / den end
-			t = math.max(0, math.min(1, t))
-			local dx, dy = pax - bax * t, pay - bay * t
-			return math.sqrt(dx * dx + dy * dy) - p[6] / 2
-		elseif k == "c" then
-			local dx, dy = gx - p[2], gy - p[3]
-			return math.sqrt(dx * dx + dy * dy) - p[4]
-		elseif k == "o" then
-			local dx, dy = gx - p[2], gy - p[3]
-			return math.abs(math.sqrt(dx * dx + dy * dy) - p[4]) - p[5] / 2
-		elseif k == "r" then
-			return sdRoundBox(gx, gy, p[2], p[3], p[4], p[5], p[6])
-		elseif k == "R" then
-			return math.abs(sdRoundBox(gx, gy, p[2], p[3], p[4], p[5], p[6])) - p[7] / 2
-		elseif k == "h" then
-			local dx, dy = gx - p[2], gy - p[3]
-			local dc = math.sqrt(dx * dx + dy * dy) - p[4]
-			return math.max(dc, p[2] - gx)
-		elseif k == "e" then
-			local dx, dy = (gx - p[2]) / p[4], (gy - p[3]) / p[5]
-			local d = (math.sqrt(dx * dx + dy * dy) - 1) * math.min(p[4], p[5])
-			return math.abs(d) - p[6] / 2
-		end
-		return 1
-	end
-
-	local ICON_PX, ICON_GRID = 64, 24
-
-	function G.iconPNG(prims)
-		local k = ICON_PX / ICON_GRID
-		return encodePNG(ICON_PX, ICON_PX, function(x, y)
-			local gx, gy = (x + 0.5) / k, (y + 0.5) / k
-			local best = 0
-			for i = 1, #prims do
-				local cov = 0.5 - primSd(prims[i], gx, gy) * k
-				if cov > best then best = cov end
-			end
-			if best > 1 then best = 1 end
-			return 255, 255, 255, math.floor(best * 255 + 0.5)
-		end, true)
-	end
-
-	local function sunPrims()
-		local p = { { "c", 12, 12, 4 } }
-		for i = 0, 7 do
-			local a = i * math.pi / 4
-			local ca, sa = math.cos(a), math.sin(a)
-			p[#p + 1] = { "l", 12 + ca * 7.2, 12 + sa * 7.2, 12 + ca * 9.6, 12 + sa * 9.6, 1.8 }
-		end
-		return p
-	end
-
-	G.icons = {
-		toggle = { { "R", 12, 12, 9, 5.4, 5.4, 2 }, { "c", 15.8, 12, 2.7 } },
-		slider = { { "l", 3.5, 8, 20.5, 8, 2 }, { "l", 3.5, 16, 20.5, 16, 2 }, { "c", 9, 8, 3 }, { "c", 15.5, 16, 3 } },
-		list = {
-			{ "c", 5, 7, 1.6 }, { "l", 9.5, 7, 20, 7, 2 },
-			{ "c", 5, 12, 1.6 }, { "l", 9.5, 12, 20, 12, 2 },
-			{ "c", 5, 17, 1.6 }, { "l", 9.5, 17, 20, 17, 2 },
-		},
-		input = { { "R", 12, 12, 9.5, 6.2, 2.6, 2 }, { "l", 8.5, 9, 8.5, 15, 1.8 }, { "l", 12, 12, 16, 12, 1.8 } },
-		click = { { "o", 12, 12, 8, 2 }, { "c", 12, 12, 3 } },
-		grid = {
-			{ "r", 7.6, 7.6, 3.6, 3.6, 1.2 }, { "r", 16.4, 7.6, 3.6, 3.6, 1.2 },
-			{ "r", 7.6, 16.4, 3.6, 3.6, 1.2 }, { "r", 16.4, 16.4, 3.6, 3.6, 1.2 },
-		},
-		columns = { { "R", 12, 12, 9, 7, 2.2, 2 }, { "l", 12, 5.6, 12, 18.4, 1.8 } },
-		pulse = {
-			{ "l", 2.5, 12.5, 7, 12.5, 2 }, { "l", 7, 12.5, 9.8, 5.5, 2 }, { "l", 9.8, 5.5, 14, 18.5, 2 },
-			{ "l", 14, 18.5, 16.8, 12.5, 2 }, { "l", 16.8, 12.5, 21.5, 12.5, 2 },
-		},
-		signal = {
-			{ "r", 5, 18.5, 1.5, 1.5, 0.8 }, { "r", 9.5, 17, 1.5, 3, 0.8 },
-			{ "r", 14, 15.5, 1.5, 4.5, 0.8 }, { "r", 18.5, 14, 1.5, 6, 0.8 },
-		},
-		user = { { "c", 12, 8, 4 }, { "r", 12, 18.6, 7, 3.6, 3.6 } },
-		contrast = { { "o", 12, 12, 8.2, 2 }, { "h", 12, 12, 5.2 } },
-		edit = { { "l", 16.4, 7.6, 7.2, 16.8, 3.8 }, { "l", 5.2, 18.8, 7.2, 16.8, 1.6 }, { "l", 10, 20.8, 20.5, 20.8, 1.8 } },
-		folder = { { "R", 12, 13.6, 9.2, 5.6, 2, 2 }, { "r", 7.4, 7.6, 3.4, 1.6, 0.8 } },
-		hash = { { "l", 9, 4.5, 7.5, 19.5, 1.8 }, { "l", 16.5, 4.5, 15, 19.5, 1.8 }, { "l", 4.5, 9, 20, 9, 1.8 }, { "l", 4, 15, 19.5, 15, 1.8 } },
-		up = { { "l", 12, 19.5, 12, 5.2, 2 }, { "l", 6.2, 11, 12, 5.2, 2 }, { "l", 17.8, 11, 12, 5.2, 2 } },
-		down = { { "l", 12, 4.5, 12, 18.8, 2 }, { "l", 6.2, 13, 12, 18.8, 2 }, { "l", 17.8, 13, 12, 18.8, 2 } },
-		sun = sunPrims(),
-		percent = { { "o", 7.5, 7.5, 2.8, 1.8 }, { "o", 16.5, 16.5, 2.8, 1.8 }, { "l", 18, 5.5, 6, 18.5, 1.9 } },
-		bolt = {
-			{ "l", 13.5, 2.8, 6, 13.2, 1.8 }, { "l", 6, 13.2, 11.8, 13.2, 1.8 }, { "l", 11.8, 13.2, 10, 21.2, 1.8 },
-			{ "l", 10, 21.2, 18, 10.2, 1.8 }, { "l", 18, 10.2, 12, 10.2, 1.8 }, { "l", 12, 10.2, 13.5, 2.8, 1.8 },
-		},
-		check = { { "l", 5, 12.8, 10, 17.8, 2.4 }, { "l", 10, 17.8, 19, 7, 2.4 } },
-		clock = { { "o", 12, 12, 8.5, 2 }, { "l", 12, 7, 12, 12, 1.9 }, { "l", 12, 12, 15.5, 14, 1.9 } },
-		plus = { { "l", 12, 5, 12, 19, 2.2 }, { "l", 5, 12, 19, 12, 2.2 } },
-		info = { { "o", 12, 12, 8.6, 2 }, { "c", 12, 8, 1.3 }, { "l", 12, 11.2, 12, 16.4, 2 } },
-		link = { { "R", 7.8, 12, 5, 3.4, 3.4, 1.9 }, { "R", 16.2, 12, 5, 3.4, 3.4, 1.9 }, { "l", 9.5, 12, 14.5, 12, 1.9 } },
-		eye = { { "e", 12, 12, 9.2, 5.6, 2 }, { "c", 12, 12, 2.7 } },
-		key = { { "o", 7.5, 12, 4, 2 }, { "l", 11.5, 12, 21, 12, 2 }, { "l", 17.5, 12, 17.5, 16, 1.9 }, { "l", 20.8, 12, 20.8, 15, 1.9 } },
-		globe = { { "o", 12, 12, 8.6, 1.8 }, { "e", 12, 12, 3.6, 8.6, 1.6 }, { "l", 3.4, 12, 20.6, 12, 1.6 } },
-		server = { { "R", 12, 7.2, 8.4, 3.2, 1.6, 1.9 }, { "R", 12, 16.8, 8.4, 3.2, 1.6, 1.9 }, { "c", 7.6, 7.2, 0.9 }, { "c", 7.6, 16.8, 0.9 } },
-		users = { { "c", 9, 8.4, 3.3 }, { "r", 9, 18.2, 5.6, 3, 3 }, { "c", 17, 9.2, 2.5 }, { "r", 17.6, 18.6, 3.6, 2.2, 2.2 } },
-		chat = { { "R", 12, 10.4, 8.8, 6.2, 3, 1.9 }, { "l", 8.6, 16.2, 7, 20.2, 1.9 }, { "l", 7, 20.2, 12, 16.6, 1.9 }, { "c", 8.6, 10.4, 1.1 }, { "c", 12, 10.4, 1.1 }, { "c", 15.4, 10.4, 1.1 } },
-		cpu = {
-			{ "R", 12, 12, 5.6, 5.6, 1.6, 1.9 }, { "r", 12, 12, 1.8, 1.8, 0.6 },
-			{ "l", 9.5, 3.6, 9.5, 6.2, 1.6 }, { "l", 14.5, 3.6, 14.5, 6.2, 1.6 }, { "l", 9.5, 17.8, 9.5, 20.4, 1.6 }, { "l", 14.5, 17.8, 14.5, 20.4, 1.6 },
-			{ "l", 3.6, 9.5, 6.2, 9.5, 1.6 }, { "l", 3.6, 14.5, 6.2, 14.5, 1.6 }, { "l", 17.8, 9.5, 20.4, 9.5, 1.6 }, { "l", 17.8, 14.5, 20.4, 14.5, 1.6 },
-		},
-		copy = { { "R", 10.2, 10.2, 5.4, 5.4, 1.6, 1.9 }, { "R", 14.4, 14.4, 5.4, 5.4, 1.6, 1.9 } },
-		shield = {
-			{ "l", 12, 3.4, 19.4, 6.2, 1.9 }, { "l", 19.4, 6.2, 19, 12.6, 1.9 }, { "l", 19, 12.6, 12, 20.6, 1.9 },
-			{ "l", 12, 20.6, 5, 12.6, 1.9 }, { "l", 5, 12.6, 4.6, 6.2, 1.9 }, { "l", 4.6, 6.2, 12, 3.4, 1.9 },
-			{ "l", 8.6, 12, 11.2, 14.6, 1.9 }, { "l", 11.2, 14.6, 15.6, 9.6, 1.9 },
-		},
-		hop = {
-			{ "l", 4, 8, 18, 8, 2 }, { "l", 14.5, 4.5, 18, 8, 2 }, { "l", 14.5, 11.5, 18, 8, 2 },
-			{ "l", 20, 16, 6, 16, 2 }, { "l", 9.5, 12.5, 6, 16, 2 }, { "l", 9.5, 19.5, 6, 16, 2 },
-		},
-	}
-
-	return G
-end)()
-
-local function i8(name) return "https://img.icons8.com/ios-glyphs/60/ffffff/" .. name .. ".png" end
 local Icons = {
-	crown = { i8("crown"), "*" }, home = { i8("home"), "H" }, main = { i8("monitor"), "M" },
-	farm = { i8("synchronize"), "~" }, settings = { i8("settings"), "S" }, search = { i8("search"), "?" },
-	close = { i8("multiply"), "x" }, minimize = { i8("minus"), "-" }, maximize = { i8("expand"), "+" },
-	chevron = { i8("chevron-down"), "v" }, palette = { i8("paint-palette"), "P" },
-	keyboard = { i8("keyboard"), "K" }, save = { i8("save"), "S" }, refresh = { i8("refresh"), "R" },
-	folder = { i8("open-folder"), "F" }, trash = { i8("trash"), "X" }, user = { i8("user"), "U" },
-	key = { i8("key"), "K" }, info = { i8("info"), "i" }, link = { i8("link"), "@" },
-	bike = { i8("bicycle"), "B" }, eye = { i8("visible"), "o" }, globe = { i8("globe"), "O" },
+	crown = { "rbxassetid://127843403295538", "*" },
+	home = { "rbxassetid://98755624629571", "H" },
+	main = { "rbxassetid://72664649203050", "M" },
+	farm = { "rbxassetid://138133190015277", "~" },
+	settings = { "rbxassetid://80758916183665", "S" },
+	search = { "rbxassetid://121018724060431", "?" },
+	close = { "rbxassetid://110786993356448", "x" },
+	minimize = { "rbxassetid://118026365011536", "-" },
+	maximize = { "rbxassetid://76045941763188", "+" },
+	chevron = { "rbxassetid://134243273101015", "v" },
+	palette = { "rbxassetid://86350350950064", "P" },
+	keyboard = { "rbxassetid://121474456068237", "K" },
+	save = { "rbxassetid://126116963775616", "S" },
+	refresh = { "rbxassetid://138133190015277", "R" },
+	folder = { "rbxassetid://76018996254888", "F" },
+	trash = { "rbxassetid://109843431391323", "X" },
+	user = { "rbxassetid://81589895647169", "U" },
+	key = { "rbxassetid://83619031955390", "K" },
+	info = { "rbxassetid://124560466474914", "i" },
+	link = { "rbxassetid://131607023382430", "@" },
+	bike = { "rbxassetid://102930322246035", "B" },
+	eye = { "rbxassetid://100033680381365", "o" },
+	globe = { "rbxassetid://114238209622913", "O" },
+	toggle = { "rbxassetid://90411952142550", "T" },
+	slider = { "rbxassetid://85538382643347", "=" },
+	list = { "rbxassetid://113179976918783", "-" },
+	input = { "rbxassetid://107551944047171", "I" },
+	click = { "rbxassetid://107150227368485", "o" },
+	grid = { "rbxassetid://81344910161871", "#" },
+	columns = { "rbxassetid://113004100221850", "|" },
+	pulse = { "rbxassetid://94212016861936", "~" },
+	signal = { "rbxassetid://78424889355261", "l" },
+	contrast = { "rbxassetid://112796643981497", "o" },
+	edit = { "rbxassetid://137986121120732", "/" },
+	hash = { "rbxassetid://82890331678520", "#" },
+	up = { "rbxassetid://89282378235317", "^" },
+	down = { "rbxassetid://98764963621439", "v" },
+	sun = { "rbxassetid://110150589884127", "*" },
+	percent = { "rbxassetid://130155041032013", "%" },
+	bolt = { "rbxassetid://130551565616516", "!" },
+	check = { "rbxassetid://93898873302694", "+" },
+	clock = { "rbxassetid://121808839832144", "o" },
+	plus = { "rbxassetid://111774323017047", "+" },
+	server = { "rbxassetid://92188766517878", "=" },
+	users = { "rbxassetid://115398113982385", "U" },
+	chat = { "rbxassetid://83881670383280", "C" },
+	cpu = { "rbxassetid://77549309870247", "#" },
+	copy = { "rbxassetid://78979572434545", "c" },
+	shield = { "rbxassetid://87354736164608", "S" },
+	hop = { "rbxassetid://132382786975101", ">" },
 }
 Library.Icons = Icons
-for name, glyph in pairs({
-	toggle = "T", slider = "=", list = "-", input = "I", click = "o", grid = "#", columns = "|", pulse = "~",
-	signal = "l", user = "U", contrast = "o", edit = "/", folder = "F", hash = "#", up = "^", down = "v",
-	sun = "*", percent = "%", bolt = "!", check = "+", clock = "o", plus = "+", info = "i", link = "@",
-	eye = "o", key = "K",
-	globe = "O", server = "=", users = "U", chat = "C", cpu = "#", copy = "c", shield = "S", hop = ">",
-}) do
-	Icons[name] = { "proc:" .. name, glyph }
-end
 
 local IconCache, Pending = {}, {}
 
 local function fetchAsset(source)
 	if source:find("^rbxassetid://") or source:find("^rbxasset://") then return source end
 	if tonumber(source) then return "rbxassetid://" .. source end
-	if source:sub(1, 5) == "proc:" then
-		if not getAsset or not HasFS then return nil end
-		local name = source:sub(6)
-		local prims = Gen.icons[name]
-		if not prims then return nil end
-		ensureFolder(ROOT)
-		ensureFolder(ICON_DIR)
-		local path = ICON_DIR .. "/p_" .. name .. "_v1.png"
-		if not isfile(path) then
-			local okGen, png = pcall(Gen.iconPNG, prims)
-			if not okGen or not pcall(writefile, path, png) then return nil end
-		end
-		local ok, asset = pcall(getAsset, path)
-		if ok and asset and asset ~= "" then return asset end
-		return nil
-	end
-	if not getAsset or not HasFS then return nil end
-	local path
-	if source:find("^https?://") then
-		ensureFolder(ROOT)
-		ensureFolder(ICON_DIR)
-		path = ICON_DIR .. "/" .. source:gsub("[^%w]", "_"):sub(-70) .. ".png"
-		if not isfile(path) then
-			local body = httpGet(source)
-			if not (body and #body > 8 and body:sub(2, 4) == "PNG") then return nil end
-			local ok = pcall(writefile, path, body)
-			if not ok then return nil end
-		end
-	elseif isfile(source) then
-		path = source
-	end
-	if not path then return nil end
-	local ok, asset = pcall(getAsset, path)
-	if ok and asset and asset ~= "" then return asset end
 	return nil
 end
 
@@ -585,18 +344,11 @@ local function tintIcon(img, color, t)
 	if g then tween(g, { TextColor3 = color }, t or 0.2) end
 end
 
-local SHADOW_DY, SHADOW_TRANS, SHADOW_SCALE = 3, 0.7, 0.75
+local SHADOW_DY, SHADOW_TRANS, SHADOW_SCALE, SHADOW_MARGIN = 3, 0.7, 0.5, 24
+local SHADOW_IMAGE = "rbxassetid://6015897843"
+local SHADOW_SLICE = Rect.new(49, 49, 450, 450)
 local function shadowAsset()
-	if not getAsset or not HasFS then return nil end
-	ensureFolder(ROOT)
-	local path = ROOT .. "/shadow_v1.png"
-	if not isfile(path) then
-		local okGen, png = pcall(Gen.shadowPNG)
-		if not okGen or not pcall(writefile, path, png) then return nil end
-	end
-	local ok, asset = pcall(getAsset, path)
-	if ok and asset and asset ~= "" then return asset end
-	return nil
+	return SHADOW_IMAGE
 end
 local function iconTile(parent, spec, tile, size, props, static)
 	local p = { Size = UDim2.fromOffset(tile, tile), Parent = parent }
@@ -612,7 +364,6 @@ local function iconTile(parent, spec, tile, size, props, static)
 	return box, img, st
 end
 
-Gen.yield = function() task.wait() end
 local Gui = new("ScreenGui", {
 	Name = "ZystrixUI_" .. HttpService:GenerateGUID(false):sub(1, 6), ResetOnSpawn = false,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true, DisplayOrder = 1000,
@@ -636,93 +387,23 @@ local function closePopup()
 	if c then Library.OpenPopup = nil c() end
 end
 
--- =====================================================================
---  FX: efek klik (ripple, ring, percikan, shine, pop)
---  Semua aset gambar efek (glow, ring, spark, tick) dibuat sendiri lewat
---  encoder PNG milik Gen (dipakai juga untuk ikon dan bayangan), lalu ditulis dengan writefile dan
---  dipakai lewat getcustomasset. Tidak butuh internet, tidak butuh rbxassetid.
---  Kalau executor tidak punya writefile/getcustomasset, efek otomatis
---  jatuh ke bentuk Frame biasa (tetap jalan, cuma lebih sederhana).
--- =====================================================================
-local FX = { Assets = {}, Ready = false, Waiting = {}, Active = 0, MAX = 40 }
-Library.FX = FX
-local FX_DIR = ROOT .. "/fx"
-local FX_VER = "v1"
-
--- shade(u, v) -> alpha 0..1 (u,v di rentang -1..1). Warna selalu putih, diwarnai lewat ImageColor3.
-local function buildPNG(w, h, shade)
-	return Gen.encode(w, h, function(x, y)
-		local a = shade((x + 0.5) / w * 2 - 1, (y + 0.5) / h * 2 - 1)
-		return 255, 255, 255, math.floor(math.clamp(a, 0, 1) * 255 + 0.5)
-	end)
-end
-
-local function sstep(a, b, x)
-	local t = math.clamp((x - a) / (b - a), 0, 1)
-	return t * t * (3 - 2 * t)
-end
-
-local function segDist(px, py, ax, ay, bx, by)
-	local dx, dy = bx - ax, by - ay
-	local t = math.clamp(((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy), 0, 1)
-	local qx, qy = ax + dx * t, ay + dy * t
-	return math.sqrt((px - qx) ^ 2 + (py - qy) ^ 2)
-end
-
-local FX_SHAPES = {
-	glow = { 96, function(u, v)
-		local r = math.sqrt(u * u + v * v)
-		return (1 - sstep(0, 1, r)) ^ 2
-	end },
-	ring = { 96, function(u, v)
-		local r = math.sqrt(u * u + v * v)
-		local line = 1 - sstep(0, 0.1, math.abs(r - 0.84))
-		local haze = 0.14 * sstep(0.1, 0.84, r) * (1 - sstep(0.84, 0.97, r))
-		return math.max(line, haze)
-	end },
-	spark = { 64, function(u, v)
-		local s = math.sqrt(math.abs(u)) + math.sqrt(math.abs(v))
-		local star = 1 - sstep(0.55, 1, s)
-		local r = math.sqrt(u * u + v * v)
-		return math.max(star, (1 - sstep(0, 0.45, r)) ^ 2)
-	end },
-	tick = { 64, function(u, v)
-		local px, py = (u + 1) / 2, (v + 1) / 2
-		local d = math.min(segDist(px, py, 0.2, 0.52, 0.42, 0.74), segDist(px, py, 0.42, 0.74, 0.8, 0.28))
-		return 1 - sstep(0.07, 0.115, d)
-	end },
+local FX = {
+	Assets = {
+		glow = "rbxassetid://88172507927269",
+		ring = "rbxassetid://130359823580534",
+		spark = "rbxassetid://111044800239623",
+		tick = "rbxassetid://93898873302694",
+	},
+	Ready = true, Active = 0, MAX = 40,
 }
-
-function FX.init()
-	if HasFS and getAsset then
-		ensureFolder(ROOT)
-		ensureFolder(FX_DIR)
-		for name, spec in pairs(FX_SHAPES) do
-			pcall(function()
-				local path = FX_DIR .. "/" .. FX_VER .. "_" .. name .. ".png"
-				if not isfile(path) or #readfile(path) < 100 then
-					writefile(path, buildPNG(spec[1], spec[1], spec[2]))
-				end
-				local a = getAsset(path)
-				if a and a ~= "" then FX.Assets[name] = a end
-			end)
-			task.wait()
-		end
-	end
-	FX.Ready = true
-	for _, f in ipairs(FX.Waiting) do pcall(f) end
-	FX.Waiting = {}
-end
+Library.FX = FX
 
 function FX.whenReady(fn)
-	if FX.Ready then pcall(fn) else FX.Waiting[#FX.Waiting + 1] = fn end
+	pcall(fn)
 end
-
-task.spawn(FX.init)
 
 local FxLayer = new("Frame", { Name = "Fx", Size = UDim2.fromScale(1, 1), ZIndex = 200, Parent = Gui })
 
--- skala efektif (semua UIScale dari objek ke atas), dipakai buat ngubah posisi layar -> offset lokal
 local function uiScale(obj)
 	local s, o = 1, obj
 	while o and o ~= Gui do
@@ -800,7 +481,6 @@ local function life(inst, t)
 	end)
 end
 
--- layer klip bulat yang dibuat sekali saat pertama dipakai (biar tidak boros CanvasGroup)
 local function layerOf(host, radius)
 	local l = host:FindFirstChild("FxLayer")
 	if not l then
@@ -819,7 +499,6 @@ local function layerOf(host, radius)
 	return l
 end
 
--- gelombang cahaya yang melebar dari titik klik, terpotong rapi di dalam elemen
 function FX.ripple(host, pos, color, opts)
 	if not fxOn() or not host or not host.Parent then return end
 	opts = opts or {}
@@ -845,7 +524,6 @@ function FX.ripple(host, pos, color, opts)
 	fxFade(inst, 1, t, Enum.EasingStyle.Quad)
 end
 
--- kilatan cahaya miring yang menyapu elemen (dipakai tombol utama)
 function FX.shine(host, color, radius)
 	if not fxOn() or not host or not host.Parent then return end
 	local layer = host:IsA("CanvasGroup") and host or layerOf(host, radius or 8)
@@ -870,7 +548,6 @@ function FX.shine(host, color, radius)
 	tween(bar, { Position = UDim2.fromOffset(w + h, h / 2) }, 0.55, Enum.EasingStyle.Quint)
 end
 
--- cincin yang melebar/menyempit di layar (koordinat piksel layar)
 function FX.ring(center, color, from, to, time, a0)
 	if not fxOn() then return end
 	local inst = fxShape("ring", FxLayer)
@@ -885,7 +562,6 @@ function FX.ring(center, color, from, to, time, a0)
 	fxFade(inst, 1, time, Enum.EasingStyle.Quad)
 end
 
--- percikan kecil yang melesat keluar lalu memudar
 function FX.burst(center, color, count, dist, opts)
 	if not fxOn() then return end
 	opts = opts or {}
@@ -930,14 +606,12 @@ function FX.scaleTo(obj, v, time, style, dir)
 	return tween(fxScale(obj), { Scale = v }, time or 0.2, style or Enum.EasingStyle.Quint, dir)
 end
 
--- lompat kecil: mulai dari skala `from` lalu memantul balik ke 1
 function FX.pop(obj, from, time)
 	local u = fxScale(obj)
 	u.Scale = from
 	tween(u, { Scale = 1 }, time or 0.45, Enum.EasingStyle.Back)
 end
 
--- kedip warna lalu kembali ke warna normal
 local function flashObj(obj, prop, hot, rest, up, down)
 	if Library.Effects == false then return end
 	up = up or 0.08
@@ -947,7 +621,6 @@ local function flashObj(obj, prop, hot, rest, up, down)
 	end)
 end
 
--- catat posisi tekan (mouse / sentuh), panggil onDown saat ditekan dan onUp saat dilepas
 local function pressTrack(hit, onDown, onUp)
 	local st = { Pos = nil, Down = false }
 	connect(hit.InputBegan, function(i)
@@ -970,7 +643,6 @@ end
 function Library:SetEffects(v)
 	Library.Effects = v and true or false
 end
-
 
 local function clampCenter(target, nx, ny, startPos)
 	local vp = Gui.AbsoluteSize
@@ -1049,10 +721,10 @@ function Library:Notify(o)
 	if NotifShadow then
 		new("ImageLabel", {
 			Name = "Shadow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 3),
-			Size = UDim2.new(1, 28, 1, 28), Image = NotifShadow, ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = 0.8,
+			Size = UDim2.new(1, 40, 1, 40), Image = NotifShadow, ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = 0.8,
 			ScaleType = Enum.ScaleType.Slice,
-			SliceCenter = Rect.new(Gen.shadowCenter, Gen.shadowCenter, Gen.shadowCenter + 2, Gen.shadowCenter + 2),
-			SliceScale = 0.6, ZIndex = 0, Parent = mover,
+			SliceCenter = SHADOW_SLICE,
+			SliceScale = SHADOW_SCALE, ZIndex = 0, Parent = mover,
 		})
 	end
 	local toast = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", Parent = mover })
@@ -1123,7 +795,6 @@ function Library:Notify(o)
 	end
 
 	tween(mover, { Position = UDim2.fromOffset(0, 0) }, 0.45, Enum.EasingStyle.Back)
-	-- garis tepi menyala sebentar saat masuk, ikon memantul
 	tstroke.Color = Theme.Accent
 	tween(tstroke, { Color = Theme.Stroke }, 1.0, Enum.EasingStyle.Quad)
 	task.delay(0.16, function()
@@ -1252,8 +923,6 @@ local function onHover(gui, enter, leave)
 	connect(gui.MouseLeave, leave)
 end
 
--- Mouse: aksi jalan saat ditekan. Sentuh: aksi jalan saat dilepas di tempat yang sama (anti salah-tap
--- saat scroll), kecuali eager. Callback menerima posisi layar tekanan (Vector2) buat titik ripple.
 function onClick(btn, fn, eager)
 	local last = 0
 	local function fire(pos)
@@ -1320,7 +989,6 @@ function Section:AddToggle(o)
 	round(knob)
 	gradient(knob, 190)
 	new("UIStroke", { Color = Color3.new(0, 0, 0), Transparency = 0.7, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = knob })
-	-- centang kecil di dalam knob saat aktif (gambarnya dibuat lewat FX, muncul begitu aset siap)
 	local tick = new("ImageLabel", {
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(0, 0),
 		ImageTransparency = 1, Img = "Accent", Parent = knob,
@@ -1351,12 +1019,10 @@ function Section:AddToggle(o)
 			tick.ImageTransparency = on and 0 or 1
 			return
 		end
-		-- warna berubah cepat (respon terasa instan), knob meluncur dengan sedikit pantulan
 		tween(pill, { BackgroundColor3 = bg }, 0.14, Enum.EasingStyle.Quad)
 		tween(pst, { Color = bd }, 0.14, Enum.EasingStyle.Quad)
 		tween(knob, { BackgroundColor3 = kc }, 0.14, Enum.EasingStyle.Quad)
 		tween(knob, { Position = kp }, 0.32, Enum.EasingStyle.Back)
-		-- knob melar sebentar saat bergerak lalu mengerut kembali
 		tween(knob, { Size = UDim2.fromOffset(KS + 4, KS - 2) }, 0.08, Enum.EasingStyle.Quad)
 		task.delay(0.08, function()
 			if my == tok then tween(knob, { Size = UDim2.fromOffset(KS, KS) }, 0.3, Enum.EasingStyle.Back) end
@@ -1500,7 +1166,6 @@ function Section:AddSlider(o)
 		return Vector2.new(knob.AbsolutePosition.X + knob.AbsoluteSize.X / 2, knob.AbsolutePosition.Y + knob.AbsoluteSize.Y / 2)
 	end
 
-	-- cahaya lembut di belakang knob selama digeser
 	local function ensureHalo()
 		if halo or not FX.Assets.glow then return halo end
 		halo = new("ImageLabel", {
@@ -1562,7 +1227,6 @@ function Section:AddSlider(o)
 			tween(h, { ImageTransparency = 0.55 }, 0.2)
 		end
 		FX.ripple(row, Vector2.new(i.Position.X, i.Position.Y), Theme.Accent, { Radius = 8, Alpha = 0.9 })
-		-- lompatan pertama (tap di track) dibuat halus, setelah itu ikut jari dengan cepat
 		fillTime, fillStyle = 0.28, Enum.EasingStyle.Quint
 		fromX(i.Position.X)
 		fillTime, fillStyle = 0.07, Enum.EasingStyle.Quad
@@ -1640,7 +1304,6 @@ function Section:AddDropdown(o)
 		end
 		local tr = obj.Value ~= nil and 0 or 0.45
 		if animate then
-			-- teks baru naik dari bawah sambil menyala
 			txt.TextTransparency = 1
 			txt.Position = UDim2.fromOffset(8, 8)
 			tween(txt, { TextTransparency = tr, Position = UDim2.fromOffset(8, 0) }, 0.3, Enum.EasingStyle.Quint)
@@ -1710,7 +1373,6 @@ function Section:AddDropdown(o)
 			})
 			corner(item, 6)
 			local pad = padding(item, 8, 0, 8, 0)
-			-- item muncul satu per satu: geser dari kiri sambil menyala (maksimal 6 pertama supaya tetap ringan)
 			if idx <= 6 then
 				item.TextTransparency = 1
 				pad.PaddingLeft = UDim.new(0, 20)
@@ -1731,7 +1393,6 @@ function Section:AddDropdown(o)
 					tween(pad, { PaddingLeft = UDim.new(0, 8) }, 0.18)
 				end)
 			onClick(item, function()
-				-- item yang dipilih menyala sebentar selagi menu menutup
 				item.BackgroundColor3 = Theme.Accent
 				item.BackgroundTransparency = 0.6
 				tween(item, { BackgroundTransparency = 1 }, 0.2)
@@ -1835,7 +1496,6 @@ function Section:AddButton(o)
 	connect(hit.MouseButton1Down, function() tween(sc, { Scale = 0.95 }, 0.06) end)
 	connect(hit.MouseButton1Up, function() tween(sc, { Scale = 1 }, 0.3, Enum.EasingStyle.Back) end)
 	onClick(hit, function(pos)
-		-- ripple dari titik tekan, ikon memantul, tombol utama disapu kilatan cahaya
 		FX.ripple(target, pos, primary and Theme.Background or Theme.Accent, { Radius = primary and 8 or 8, Alpha = primary and 0.78 or 0.8, Time = 0.55 })
 		if iconImg then FX.pop(iconImg, 1.45, 0.5) end
 		if primary then
@@ -1868,7 +1528,6 @@ function Section:AddTextbox(o)
 	sideControl(tb)
 	padding(tb, 8, 0, 8, 0)
 	local st = stroke(tb)
-	-- garis fokus yang melebar dari tengah saat kotak aktif
 	local line = new("Frame", {
 		AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0), Size = UDim2.new(0, 0, 0, 2), Bg = "Accent", Parent = tb,
 	})
@@ -1887,7 +1546,6 @@ function Section:AddTextbox(o)
 		tween(line, { Size = UDim2.new(0, 0, 0, 2) }, 0.25, Enum.EasingStyle.Quint)
 		obj.Value = tb.Text
 		fire(obj, o)
-		-- konfirmasi kecil saat input disimpan: kotak berdenyut dan ada cincin lebar
 		FX.pop(tb, 0.96, 0.4)
 		FX.ring(Vector2.new(tb.AbsolutePosition.X + tb.AbsoluteSize.X / 2, tb.AbsolutePosition.Y + tb.AbsoluteSize.Y / 2), Theme.Accent, tb.AbsoluteSize.Y * 0.8, tb.AbsoluteSize.X * 1.05, 0.4, 0.75)
 	end)
@@ -1935,7 +1593,6 @@ function Section:AddKeybind(o)
 		end
 		st.Transparency = 0
 		if v then
-			-- selama menunggu tombol, garis tepi berdenyut pelan
 			pulse = TweenService:Create(st, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Transparency = 0.75 })
 			pulse:Play()
 			FX.pop(btn, 0.92, 0.4)
@@ -2001,7 +1658,6 @@ function Section:AddLabel(o)
 	local title = new("TextLabel", { Text = o.Title or "", Font = FONT_BOLD, Fg = "Text", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, TextWrapped = true, LayoutOrder = 1, Parent = row })
 	local sub = new("TextLabel", { Text = o.Text or "", Fg = "SubText", TextSize = 11, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, TextWrapped = true, LayoutOrder = 2, Visible = (o.Text ~= nil and o.Text ~= ""), Parent = row })
 	local obj = { Type = "Label" }
-	-- teks yang berubah menyala sebentar supaya perubahannya kelihatan
 	function obj:Set(t, s)
 		if t ~= nil and title.Text ~= t then
 			title.Text = t
@@ -2250,7 +1906,6 @@ function Window:AddTab(opts)
 		end)
 
 	if opts.NoPage ~= true then
-		-- halaman berporos di tengah supaya bisa membesar halus saat berpindah tab
 		local holder = new("CanvasGroup", {
 			AnchorPoint = Vector2.new(0.5, 0.5), Position = PAGE_REST, Size = UDim2.fromScale(1, 1),
 			Visible = false, GroupTransparency = 1, Parent = self.Content,
@@ -2304,7 +1959,6 @@ function Window:SelectTab(tab, instant)
 	if SliderLock.Active then pcall(SliderLock.Active) end
 	local old = self.Current
 	self.Current = tab
-	-- arah geser mengikuti urutan tab: turun ke tab di bawah, naik ke tab di atas
 	local dir = (old and old.Index and tab.Index < old.Index) and -1 or 1
 	if old then
 		old.Active = false
@@ -2334,7 +1988,6 @@ function Window:SelectTab(tab, instant)
 		tab.PageScale.Scale = 0.985
 		tween(pg, { GroupTransparency = 0, Position = PAGE_REST }, 0.32, Enum.EasingStyle.Quint)
 		tween(tab.PageScale, { Scale = 1 }, 0.4, Enum.EasingStyle.Back)
-		-- ikon memantul, label meluncur masuk dari kanan
 		if tab.IconTile then FX.pop(tab.IconTile, 1.3, 0.5) end
 		tab.Label.Position = UDim2.fromOffset(tab.LabelX + 6, 0)
 		tween(tab.Label, { Position = UDim2.fromOffset(tab.LabelX, 0) }, 0.45, Enum.EasingStyle.Back)
@@ -2416,7 +2069,6 @@ function Window:Toggle(state)
 	local rest = self._restPos
 	local lowered = UDim2.new(rest.X.Scale, rest.X.Offset, rest.Y.Scale, rest.Y.Offset + 22)
 	if state then
-		-- buka: naik dari bawah sambil membesar dengan pantulan dan memudar masuk
 		main.Visible = true
 		main.Position = lowered
 		ScaleObj.Scale = target * 0.86
@@ -2597,7 +2249,6 @@ function Window:CreateDashboard(opts)
 		tween(sc, { Scale = 1 }, 0.35, Enum.EasingStyle.Back)
 	end
 
-	-- area klik: hover berubah warna, ditekan = memantul + ripple dari titik tekan (+ ikon memantul kalau ada)
 	local function clickable(gui, fn, key, popObj)
 		local hit = hitZone(gui, { ZIndex = 6 })
 		onHover(hit,
@@ -2779,7 +2430,7 @@ function Window:CreateDashboard(opts)
 		end
 	end
 	local caps = {
-		{ "FS", HasFS }, { "Asset", getAsset ~= nil },
+		{ "FS", HasFS },
 		{ "HTTP", ((syn and syn.request) or (http and http.request) or http_request or request) ~= nil },
 		{ "Clip", (setclipboard or toclipboard or (syn and syn.write_clipboard)) ~= nil },
 		{ "Draw", Drawing ~= nil }, { "Hooks", hookfunction ~= nil }, { "Env", getgenv ~= nil }, { "UI", gethui ~= nil },
@@ -3196,7 +2847,7 @@ function Library:Confirm(o)
 	local head = new("Frame", { Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 1, Parent = card })
 	local cbox = iconTile(head, o.Icon or "info", 26, 15, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0) })
 	new("TextLabel", {
-		Text = o.Title or "Konfirmasi", Font = FONT_BOLD, TextSize = 15, Fg = "Text",
+		Text = o.Title or "Confirm", Font = FONT_BOLD, TextSize = 15, Fg = "Text",
 		Position = UDim2.fromOffset(34, 0), Size = UDim2.new(1, -34, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
 	})
 	new("TextLabel", {
@@ -3306,9 +2957,9 @@ function Library:CreateWindow(opts)
 	if shadowImg then
 		self.ShadowObj = new("ImageLabel", {
 			Name = "Shadow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, SHADOW_DY),
-			Size = UDim2.new(1, Gen.shadowMargin * SHADOW_SCALE * 2, 1, Gen.shadowMargin * SHADOW_SCALE * 2), Image = shadowImg,
+			Size = UDim2.new(1, SHADOW_MARGIN * 2, 1, SHADOW_MARGIN * 2), Image = shadowImg,
 			ImageColor3 = Color3.new(0, 0, 0), ImageTransparency = SHADOW_TRANS, ScaleType = Enum.ScaleType.Slice,
-			SliceCenter = Rect.new(Gen.shadowCenter, Gen.shadowCenter, Gen.shadowCenter + 2, Gen.shadowCenter + 2),
+			SliceCenter = SHADOW_SLICE,
 			SliceScale = SHADOW_SCALE, ZIndex = 0, Parent = Main,
 		})
 	end
@@ -3533,7 +3184,6 @@ function Library:CreateWindow(opts)
 		draggable(fhit, holder, function()
 			self:Toggle()
 			pulse()
-			-- mahkota berputar penuh, cincin dan percikan keluar dari tombol
 			local s = holder.AbsoluteSize.X / TOG_SIZE
 			local c = Vector2.new(holder.AbsolutePosition.X + holder.AbsoluteSize.X / 2, holder.AbsolutePosition.Y + holder.AbsoluteSize.Y / 2)
 			FX.ring(c, Theme.Accent, 28 * s, 84 * s, 0.55, 0.18)
