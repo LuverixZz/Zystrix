@@ -980,7 +980,7 @@ local function rowLabel(row, text, width, shift)
 	width = width or UDim2.new(1, -24, 1, 0)
 	return new("TextLabel", {
 		Text = text or "", Fg = "Text", Position = UDim2.fromOffset(12 + shift, 0),
-		Size = UDim2.new(width.X.Scale, width.X.Offset - shift, width.Y.Scale, width.Y.Offset),
+		Size = UDim2.new(width.X.Scale, width.X.Offset - shift - 12, width.Y.Scale, width.Y.Offset),
 		TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
 	})
 end
@@ -1039,7 +1039,7 @@ end
 local function sideControl(box)
 	new("UISizeConstraint", { MinSize = Vector2.new(96, 24), MaxSize = Vector2.new(160, 24), Parent = box })
 end
-local SIDE_LABEL = UDim2.new(0.5, -12, 1, 0)
+local SIDE_LABEL = UDim2.new(0.5, -18, 1, 0)
 local SIDE_BOX = UDim2.new(0.5, -10, 0, 24)
 
 local function restElement() return Theme.Element end
@@ -1642,7 +1642,7 @@ end
 function Section:AddKeybind(o)
 	local row = makeRow(self, 36)
 	indexItem(self, o.Name, "Keybind", row, o.Icon)
-	rowLabel(row, o.Name, UDim2.new(1, -118, 1, 0), rowIcon(row, o.Icon))
+	rowLabel(row, o.Name, UDim2.new(1, -126, 1, 0), rowIcon(row, o.Icon))
 	local zone = hitZone(row, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.fromOffset(HIT_W, 36) })
 	local btn = new("TextButton", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(0, 24),
@@ -2151,12 +2151,12 @@ function Section:AddStepper(o)
 
 	local row = makeRow(self, 40)
 	indexItem(self, o.Name, "Stepper", row, o.Icon)
-	rowLabel(row, o.Name, UDim2.new(1, -140, 1, 0), rowIcon(row, o.Icon))
+	rowLabel(row, o.Name, UDim2.new(1, -114, 1, 0), rowIcon(row, o.Icon))
 
-	local grp = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(120, 28), Bg = "Hover", Parent = row })
+	local grp = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(96, 28), Bg = "Hover", Parent = row })
 	corner(grp, 8)
 	stroke(grp)
-	local valBox = new("Frame", { Position = UDim2.fromOffset(28, 0), Size = UDim2.fromOffset(64, 28), ClipsDescendants = true, Parent = grp })
+	local valBox = new("Frame", { Position = UDim2.fromOffset(26, 0), Size = UDim2.fromOffset(44, 28), ClipsDescendants = true, Parent = grp })
 	local valLbl = new("TextLabel", { Font = FONT_BOLD, Fg = "Text", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = valBox })
 
 	local function mini(x, glyph)
@@ -2170,7 +2170,7 @@ function Section:AddStepper(o)
 		return b, l, sc, hit
 	end
 	local minus, minusLbl, minusSc, minusHit = mini(2, "-")
-	local plus, plusLbl, plusSc, plusHit = mini(94, "+")
+	local plus, plusLbl, plusSc, plusHit = mini(70, "+")
 
 	local obj = { Type = "Stepper", Value = min, Min = min, Max = max, Step = step }
 	local ready = false
@@ -2238,7 +2238,7 @@ function Section:AddProgress(o)
 	local row = makeRow(self, 52)
 	indexItem(self, o.Name, "Progress", row, o.Icon)
 	local sh = rowIcon(row, o.Icon, 17)
-	rowLabel(row, o.Name, UDim2.new(1, -80, 0, 26), sh).Position = UDim2.fromOffset(12 + sh, 4)
+	rowLabel(row, o.Name, UDim2.new(1, -84, 0, 26), sh).Position = UDim2.fromOffset(12 + sh, 4)
 	local pct = new("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 4), Size = UDim2.fromOffset(60, 26),
 		TextXAlignment = Enum.TextXAlignment.Right, Fg = "SubText", TextSize = 12, Parent = row,
