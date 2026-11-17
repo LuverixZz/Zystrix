@@ -7,6 +7,7 @@ local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
 local Stats = game:GetService("Stats")
+local TextService = game:GetService("TextService")
 local LocalPlayer = Players.LocalPlayer
 while not LocalPlayer do
 	Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
@@ -94,7 +95,7 @@ local Library = {
 	Flags = {}, Options = {}, Connections = {}, Windows = {},
 	Version = "2.0.0", ThemeName = "Monochrome",
 	ThemeList = { "Monochrome", "Crimson", "Ocean", "Emerald", "Violet", "Amber" },
-	Transparency = 0.1, ConfigFolder = ROOT, Listening = false,
+	Transparency = 0, ConfigFolder = ROOT, Listening = false,
 	Effects = true,
 }
 
@@ -355,63 +356,37 @@ local function tintIcon(img, color, t)
 	if g then tween(g, { TextColor3 = color }, t or 0.2) end
 end
 
-local SHADOW_DY, SHADOW_SPREAD, SHADOW_LAYERS, SHADOW_ALPHA, SHADOW_POWER = 0, 32, 24, 0.022, 2.2
+local SHADOW_IMAGE = "rbxassetid://5554236805"
+local SHADOW_SPREAD, SHADOW_OPACITY = 32, 0.62
 
 local function makeShadow(parent, radius, o)
 	o = o or {}
 	local spread = o.Spread or SHADOW_SPREAD
-	local layers = o.Layers or SHADOW_LAYERS
-	local alpha = o.Alpha or SHADOW_ALPHA
-	local power = o.Power or SHADOW_POWER
-	local dy = o.Offset or SHADOW_DY
+	local opacity = o.Opacity or SHADOW_OPACITY
+	local dy = o.Offset or 0
 
-	local holder = Instance.new("Frame")
+	local holder = Instance.new("ImageLabel")
 	holder.Name = "Shadow"
 	holder.BackgroundTransparency = 1
 	holder.BorderSizePixel = 0
 	holder.Active = false
 	holder.AnchorPoint = Vector2.new(0.5, 0.5)
 	holder.Position = UDim2.new(0.5, 0, 0.5, dy)
-	holder.Size = UDim2.fromScale(1, 1)
+	holder.Size = UDim2.new(1, spread * 1.5, 1, spread * 1.5)
 	holder.ZIndex = 0
+	holder.Image = SHADOW_IMAGE
+	holder.ImageColor3 = Color3.new(0, 0, 0)
+	holder.ImageTransparency = 1 - opacity
+	holder.ScaleType = Enum.ScaleType.Slice
+	holder.SliceCenter = Rect.new(23, 23, 277, 277)
 	holder.Parent = parent
-
-	local strokes = {}
-	for i = 1, layers do
-		local frac = (i - 0.5) / layers
-		local thick = math.max(1, spread * (1 - frac ^ (1 / power)))
-		local ring = Instance.new("Frame")
-		ring.Name = "Layer" .. i
-		ring.BackgroundTransparency = 1
-		ring.BorderSizePixel = 0
-		ring.Active = false
-		ring.AnchorPoint = Vector2.new(0.5, 0.5)
-		ring.Position = UDim2.fromScale(0.5, 0.5)
-		ring.Size = UDim2.fromScale(1, 1)
-		ring.ZIndex = 0
-		local c = Instance.new("UICorner")
-		c.CornerRadius = UDim.new(0, radius)
-		c.Parent = ring
-		local st = Instance.new("UIStroke")
-		st.Color = Color3.new(0, 0, 0)
-		st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		st.Thickness = thick
-		st.Transparency = 1 - alpha
-		st.Parent = ring
-		ring.Parent = holder
-		strokes[i] = st
-	end
 
 	local obj = { Holder = holder }
 	function obj:Set(visible)
-		for _, st in ipairs(strokes) do
-			st.Transparency = visible and (1 - alpha) or 1
-		end
+		holder.ImageTransparency = visible and (1 - opacity) or 1
 	end
 	function obj:Fade(visible, time, style)
-		for _, st in ipairs(strokes) do
-			tween(st, { Transparency = visible and (1 - alpha) or 1 }, time or 0.3, style or Enum.EasingStyle.Quad)
-		end
+		tween(holder, { ImageTransparency = visible and (1 - opacity) or 1 }, time or 0.3, style or Enum.EasingStyle.Quad)
 	end
 	return obj
 end
@@ -782,7 +757,7 @@ function Library:Notify(o)
 	local mover = new("Frame", {
 		Position = UDim2.fromOffset(NOTIFY_OFF, 0), Size = UDim2.new(1, 0, 0, 64), Parent = slot,
 	})
-	makeShadow(mover, 12, { Spread = 12, Layers = 8, Alpha = 0.04 })
+	makeShadow(mover, 12, { Spread = 14, Opacity = 0.55 })
 	local toast = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", Parent = mover })
 	corner(toast, 12)
 	local tstroke = stroke(toast)
@@ -973,14 +948,51 @@ local function indexItem(sec, name, kind, row, icon)
 	end
 end
 
+local function fitLabel(lbl, maxSize, minSize)
+	local lastW, lastText = -1, nil
+	local function run()
+		local sc = math.max(getScale(), 0.05)
+		local w, h = lbl.AbsoluteSize.X / sc, lbl.AbsoluteSize.Y / sc
+		if w <= 4 then return end
+		local text = lbl.Text
+		if lastText == text and math.abs(w - lastW) < 2.5 then return end
+		lastW, lastText = w, text
+		pcall(function()
+			for s = maxSize, minSize, -1 do
+				local b = TextService:GetTextSize(text, s, lbl.Font, Vector2.new(10000, 10000))
+				if b.X <= w then
+					lbl.TextWrapped = false
+					lbl.TextSize = s
+					return
+				end
+			end
+			if h >= 30 then
+				lbl.TextWrapped = true
+				local s = minSize + 1
+				local b = TextService:GetTextSize(text, s, lbl.Font, Vector2.new(w, 10000))
+				if b.Y > h then s = minSize end
+				lbl.TextSize = s
+			else
+				lbl.TextWrapped = false
+				lbl.TextSize = minSize
+			end
+		end)
+	end
+	connect(lbl:GetPropertyChangedSignal("AbsoluteSize"), run)
+	connect(lbl:GetPropertyChangedSignal("Text"), run)
+	task.defer(run)
+end
+
 local function rowLabel(row, text, width, shift)
 	shift = shift or 0
 	width = width or UDim2.new(1, -24, 1, 0)
-	return new("TextLabel", {
+	local lbl = new("TextLabel", {
 		Text = text or "", Fg = "Text", Position = UDim2.fromOffset(12 + shift, 0),
 		Size = UDim2.new(width.X.Scale, width.X.Offset - shift - 12, width.Y.Scale, width.Y.Offset),
 		TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
 	})
+	fitLabel(lbl, 13, 10)
+	return lbl
 end
 
 local function rowIcon(row, spec, cy)
@@ -1046,7 +1058,7 @@ local function restHover() return Theme.Hover end
 function Section:AddToggle(o)
 	local row = makeRow(self, 40)
 	indexItem(self, o.Name, "Toggle", row, o.Icon)
-	rowLabel(row, o.Name, UDim2.new(1, -90, 1, 0), rowIcon(row, o.Icon))
+	rowLabel(row, o.Name, UDim2.new(1, -68, 1, 0), rowIcon(row, o.Icon))
 
 	local PW, PH, KS, PAD = 46, 24, 18, 3
 	local pill = new("Frame", {
@@ -1182,7 +1194,7 @@ function Section:AddSlider(o)
 	local row = makeRow(self, 48)
 	indexItem(self, o.Name, "Slider", row, o.Icon)
 	local sh = rowIcon(row, o.Icon, 17)
-	rowLabel(row, o.Name, UDim2.new(1, -86, 0, 26), sh).Position = UDim2.fromOffset(12 + sh, 4)
+	rowLabel(row, o.Name, UDim2.new(1, -80, 0, 26), sh).Position = UDim2.fromOffset(12 + sh, 4)
 	local valueLbl
 	local vst
 	if o.Input == false then
@@ -1640,7 +1652,8 @@ end
 function Section:AddKeybind(o)
 	local row = makeRow(self, 36)
 	indexItem(self, o.Name, "Keybind", row, o.Icon)
-	rowLabel(row, o.Name, UDim2.new(1, -126, 1, 0), rowIcon(row, o.Icon))
+	local kshift = rowIcon(row, o.Icon)
+	local klbl = rowLabel(row, o.Name, UDim2.new(1, -126, 1, 0), kshift)
 	local zone = hitZone(row, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.fromOffset(HIT_W, 36) })
 	local btn = new("TextButton", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(0, 24),
@@ -1650,6 +1663,16 @@ function Section:AddKeybind(o)
 	corner(btn, 6)
 	padding(btn, 10, 0, 10, 0)
 	new("UISizeConstraint", { MinSize = Vector2.new(34, 24), MaxSize = Vector2.new(108, 24), Parent = btn })
+	local lastKW = -1
+	local function fitKeyLabel()
+		local sc = math.max(getScale(), 0.05)
+		local w = btn.AbsoluteSize.X / sc
+		if math.abs(w - lastKW) < 1 then return end
+		lastKW = w
+		klbl.Size = UDim2.new(1, -(12 + kshift + w + 20), 1, 0)
+	end
+	connect(btn:GetPropertyChangedSignal("AbsoluteSize"), fitKeyLabel)
+	task.defer(fitKeyLabel)
 	local st = stroke(btn)
 
 	local obj = { Type = "Keybind", Value = nil }
@@ -2608,7 +2631,7 @@ function Tab:AddSection(o)
 		function() tween(hzone, { BackgroundTransparency = 0.6 }, 0.15) end,
 		function() tween(hzone, { BackgroundTransparency = 1 }, 0.2) end)
 
-	local content = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, ClipsDescendants = true, LayoutOrder = 2, Parent = card })
+	local content = new("CanvasGroup", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, LayoutOrder = 2, Parent = card })
 	padding(content, 8, 0, 8, 8)
 	local layout = listLayout(content, 5)
 
@@ -2689,7 +2712,16 @@ local function relayoutSub(tab)
 	end
 	local open = tab.Expanded or tab.Window.Searching
 	local h = (n > 0 and open) and (n * 28 + (n - 1) * 3 + 6) or 0
-	tween(tab.SubFrame, { Size = UDim2.new(1, 0, 0, h) }, 0.28, Enum.EasingStyle.Quint)
+	local sf = tab.SubFrame
+	tab.SubTok = (tab.SubTok or 0) + 1
+	local tok = tab.SubTok
+	if h > 0 then sf.Visible = true end
+	tween(sf, { Size = UDim2.new(1, 0, 0, h) }, 0.28, Enum.EasingStyle.Quint)
+	if h == 0 then
+		task.delay(0.3, function()
+			if tab.SubTok == tok and sf.Parent then sf.Visible = false end
+		end)
+	end
 end
 
 function Library._toggleSub(tab)
@@ -2713,7 +2745,7 @@ end
 
 function Window:_sub(parentTab)
 	if parentTab.SubFrame then return parentTab.SubFrame end
-	local sf = new(USE_CANVAS_HIT and "CanvasGroup" or "Frame", { Size = UDim2.new(1, 0, 0, 0), ClipsDescendants = true, LayoutOrder = 2, Parent = parentTab.Holder })
+	local sf = new("CanvasGroup", { Size = UDim2.new(1, 0, 0, 0), Visible = false, LayoutOrder = 2, Parent = parentTab.Holder })
 	listLayout(sf, 3)
 	padding(sf, 14, 3, 0, 0)
 	parentTab.SubFrame = sf
@@ -2849,7 +2881,7 @@ function Window:SelectTab(tab, instant)
 		old.Active = false
 		paintTab(old, false)
 		local pg = old.Page
-		tween(pg, { GroupTransparency = 1, Position = UDim2.new(0.5, 0, 0.5, -10 * dir) }, 0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		tween(pg, { GroupTransparency = 1 }, 0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 		tween(old.PageScale, { Scale = 0.985 }, 0.16)
 		task.delay(0.17, function()
 			if not old.Active then
@@ -2869,7 +2901,7 @@ function Window:SelectTab(tab, instant)
 		tab.PageScale.Scale = 1
 	else
 		pg.GroupTransparency = 1
-		pg.Position = UDim2.new(0.5, 0, 0.5, 16 * dir)
+		pg.Position = PAGE_REST
 		tab.PageScale.Scale = 0.985
 		tween(pg, { GroupTransparency = 0, Position = PAGE_REST }, 0.32, Enum.EasingStyle.Quint)
 		tween(tab.PageScale, { Scale = 1 }, 0.4, Enum.EasingStyle.Back)
@@ -3336,7 +3368,7 @@ end
 
 function Window:SetUserVisible(v)
 	self.UserCard.Visible = v
-	tween(self.TabList, { Size = UDim2.new(1, 0, 1, -(46 + (v and 60 or 8))) }, 0.25)
+	tween(self.TabClip, { Size = UDim2.new(1, 0, 1, -(46 + (v and 60 or 8))) }, 0.25)
 end
 
 function Window:_statsRefresh()
@@ -4365,11 +4397,14 @@ function Library:CreateWindow(opts)
 		self:_filter(sbox.Text)
 	end)
 
-	self.TabList = new("ScrollingFrame", {
-		Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, 0, 1, -(46 + 60)), CanvasSize = UDim2.new(),
-		AutomaticCanvasSize = AutoY, ScrollBarThickness = 2, Sb = "Stroke", Parent = Sidebar,
+	self.TabClip = new("CanvasGroup", {
+		Name = "TabClip", Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, 0, 1, -(46 + 60)), Parent = Sidebar,
 	})
-	padding(self.TabList, 8, 0, 8, 6)
+	self.TabList = new("ScrollingFrame", {
+		Size = UDim2.fromScale(1, 1), CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = AutoY, ScrollBarThickness = 2, Sb = "Stroke", Parent = self.TabClip,
+	})
+	padding(self.TabList, 8, 2, 8, 6)
 	listLayout(self.TabList, 3)
 
 	self.UserCard = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 8, 1, -8), Size = UDim2.new(1, -16, 0, 44), Bg = "Element", Parent = Sidebar })
@@ -4570,7 +4605,7 @@ do
 		for k = 1, PLATES do
 			local f = new("Frame", {
 				Name = "Plate" .. k, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-				Size = UDim2.new(1, -k * 3, 1, -k * 3), Bg = "Sidebar", BackgroundTransparency = 1, ZIndex = 0, Parent = tilt,
+				Size = UDim2.new(1, -k * 3.5, 1, -k * 3.5), Bg = "Sidebar", BackgroundTransparency = 1, ZIndex = 0, Parent = tilt,
 			})
 			corner(f, 12)
 			local st = stroke(f, "Stroke", 1)
@@ -4591,12 +4626,12 @@ do
 			corner(glare, 12)
 			glareGrad = new("UIGradient", {
 				Rotation = 28,
-				Transparency = NumberSequence.new({ KP(0, 1), KP(0.25, 0.98), KP(0.5, 0.85), KP(0.75, 0.98), KP(1, 1) }),
+				Transparency = NumberSequence.new({ KP(0, 1), KP(0.25, 0.985), KP(0.5, 0.93), KP(0.75, 0.985), KP(1, 1) }),
 				Parent = glare,
 			})
 			local rim = new("Frame", { Name = "Rim", Size = UDim2.fromScale(1, 1), Active = false, Parent = outline })
 			corner(rim, 12)
-			rimStroke = stroke(rim, "Accent", 1.5)
+			rimStroke = stroke(rim, "Accent", 1)
 			rimStroke.Transparency = 1
 			rimGrad = new("UIGradient", {
 				Transparency = NumberSequence.new({ KP(0, 1), KP(0.5, 1), KP(0.8, 0.45), KP(0.95, 0.1), KP(1, 0.1) }),
@@ -4715,7 +4750,7 @@ do
 			local qx, qy = TX + wx * 0.2 * w * calm, TY + wy * 0.2 * w * calm
 			for k, pl in ipairs(plates) do
 				local lag = math.sin(t * 1.3 - k * 0.8) * 0.45 * k * w * S * calm
-				pl.Frame.Position = UDim2.new(0.5, -qx * k * 1.9 * S + lag, 0.5, -qy * k * 1.9 * S + k * 0.8)
+				pl.Frame.Position = UDim2.new(0.5, -qx * k * 1.5 * S + lag, 0.5, -qy * k * 1.5 * S + k * 0.5)
 				pl.Frame.BackgroundTransparency = 1 - (1 - pl.Base) * a
 				pl.Stroke.Transparency = 1 - 0.55 * a * (1 - (k - 1) * 0.18)
 			end
@@ -4725,7 +4760,7 @@ do
 				glareGrad.Offset = Vector2.new(math.clamp(TX * 0.55 + TY * 0.2, -0.85, 0.85), 0)
 				glare.BackgroundTransparency = 1 - show * (0.55 + 0.45 * math.clamp(lf, 0, 1))
 				rimGrad.Rotation = math.deg(math.atan2(TY, TX))
-				rimStroke.Transparency = 1 - math.clamp(0.25 + mag * 0.75, 0, 1) * show
+				rimStroke.Transparency = 1 - math.clamp(0.12 + mag * 0.6, 0, 1) * show
 			end
 
 			if crownTile then crownTile.Position = UDim2.new(0, 12 + TX * 2.4, 0.5, TY * 2.4) end
