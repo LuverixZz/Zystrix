@@ -1,5 +1,3 @@
--- ZystrixUI | loadstring-ready: loadstring(game:HttpGet("RAW_URL"))()
--- Library only (no demo window): getgenv().ZystrixUI_NoDemo = true before loading.
 if not game:IsLoaded() then game.Loaded:Wait() end
 
 local Players = game:GetService("Players")
@@ -3289,6 +3287,7 @@ function Window:Toggle(state)
 	if state == nil then state = not self.Visible end
 	if state == self.Visible then return end
 	self.Visible = state
+	self.FxShow = state
 	if self.OnToggle then pcall(self.OnToggle, state) end
 	closePopup()
 	if SliderLock.Active then pcall(SliderLock.Active) end
@@ -3375,6 +3374,16 @@ function Window:CreateSettingsTab(opts)
 	local kb = tab:AddSection({ Name = "Keybinds", Icon = "keyboard", Side = "Left" })
 	kb:AddKeybind({ Name = "Toggle UI", Icon = "keyboard", Default = self.ToggleKey, Flag = "UI_ToggleKey", Changed = function(k) if k then self.ToggleKey = k end end })
 	kb:AddButton({ Name = "Unload UI", Icon = "close", Callback = function() self:RequestClose() end })
+
+	local mo = tab:AddSection({ Name = "Motion 3D", Icon = "pulse", Side = "Left" })
+	mo:AddToggle({ Name = "3D Tilt", Icon = "grid", Default = true, Flag = "UI_Tilt", Callback = function(v) Library.Motion.Tilt = v end })
+	mo:AddToggle({ Name = "Idle Wave", Icon = "pulse", Default = true, Flag = "UI_Wave", Callback = function(v) Library.Motion.Wave = v end })
+	mo:AddToggle({ Name = "Depth Layers", Icon = "columns", Default = true, Flag = "UI_Depth", Callback = function(v) Library.Motion.Depth = v end })
+	mo:AddSlider({ Name = "Motion Strength", Icon = "slider", Min = 0.2, Max = 2, Increment = 0.05, Default = 1, Suffix = "x", Flag = "UI_MotionStrength", Callback = function(v) Library.Motion.Strength = v end })
+	if UserInputService.GyroscopeEnabled then
+		mo:AddToggle({ Name = "Gyroscope", Icon = "signal", Default = true, Flag = "UI_Gyro", Callback = function(v) Library.Motion.Gyro = v end })
+		mo:AddToggle({ Name = "Invert Gyroscope", Icon = "refresh", Default = false, Flag = "UI_GyroInvert", Callback = function(v) Library.Motion.InvertGyro = v end })
+	end
 
 	local cf = tab:AddSection({ Name = "Config", Icon = "save", Side = "Right" })
 	local nameBox = cf:AddTextbox({ Name = "Config Name", Icon = "edit", Placeholder = "MyConfig" })
@@ -4513,10 +4522,217 @@ function Library:CreateWindow(opts)
 		end
 	end)
 
+	self:_init3D(headerCrown)
+
 	tween(ScaleObj, { Scale = fitScale() }, 0.5, Enum.EasingStyle.Back)
 
 	table.insert(Library.Windows, self)
 	return self
+end
+
+do
+	local Motion = {
+		Tilt = true, Wave = true, Depth = true,
+		Gyro = true, InvertGyro = false, Strength = 1,
+	}
+	Library.Motion = Motion
+
+	function Library:SetMotion(key, value)
+		Motion[key] = value
+	end
+
+	local function newSpring() return { x = 0, v = 0 } end
+	local function stepSpring(s, target, dt, k, d)
+		s.v += ((target - s.x) * k - s.v * d) * dt
+		s.x += s.v * dt
+	end
+	local function sat(x) return math.clamp(x, -1, 1) end
+
+	local PLATES = 4
+	local KP = NumberSequenceKeypoint.new
+
+	function Window:_init3D(headerCrown)
+		local main = self.Main
+		local outline = main:FindFirstChild("Outline")
+		local crownTile = headerCrown and headerCrown.Parent
+		self.FxShow = self.Visible ~= false
+
+		local tilt = new("Frame", {
+			Name = "Tilt", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1, 1), Parent = main,
+		})
+		local tiltScale = new("UIScale", { Name = "TiltScale", Parent = tilt })
+
+		local shadowHolder = self.Shadow and self.Shadow.Holder
+		if shadowHolder then shadowHolder.Parent = tilt end
+
+		local plates = {}
+		for k = 1, PLATES do
+			local f = new("Frame", {
+				Name = "Plate" .. k, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.new(1, -k * 3, 1, -k * 3), Bg = "Sidebar", BackgroundTransparency = 1, ZIndex = 0, Parent = tilt,
+			})
+			corner(f, 12)
+			local st = stroke(f, "Stroke", 1)
+			st.Transparency = 1
+			plates[k] = { Frame = f, Stroke = st, Base = 0.4 + k * 0.1 }
+		end
+
+		self.Canvas.Parent = tilt
+		if outline then outline.Parent = tilt end
+		self.Ctrls.Parent = tilt
+
+		local glare, glareGrad, rimStroke, rimGrad
+		if outline then
+			glare = new("Frame", {
+				Name = "Glare", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1),
+				BackgroundTransparency = 1, Active = false, Parent = outline,
+			})
+			corner(glare, 12)
+			glareGrad = new("UIGradient", {
+				Rotation = 28,
+				Transparency = NumberSequence.new({ KP(0, 1), KP(0.25, 0.98), KP(0.5, 0.85), KP(0.75, 0.98), KP(1, 1) }),
+				Parent = glare,
+			})
+			local rim = new("Frame", { Name = "Rim", Size = UDim2.fromScale(1, 1), Active = false, Parent = outline })
+			corner(rim, 12)
+			rimStroke = stroke(rim, "Accent", 1.5)
+			rimStroke.Transparency = 1
+			rimGrad = new("UIGradient", {
+				Transparency = NumberSequence.new({ KP(0, 1), KP(0.5, 1), KP(0.8, 0.45), KP(0.95, 0.1), KP(1, 0.1) }),
+				Parent = rimStroke,
+			})
+		end
+
+		local px, py, lift, press = newSpring(), newSpring(), newSpring(), newSpring()
+		local show, calm = 1, 1
+		local t0 = os.clock()
+		local touch, mouseDown, lastC, baseline = nil, false, nil, nil
+
+		local function inside(pos)
+			local ap, as = main.AbsolutePosition, main.AbsoluteSize
+			return pos.X >= ap.X and pos.X <= ap.X + as.X and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y
+		end
+
+		connect(UserInputService.InputBegan, function(i)
+			if not self.FxShow then return end
+			local ty = i.UserInputType
+			if ty == Enum.UserInputType.Touch then
+				if inside(i.Position) then touch = i end
+			elseif ty == Enum.UserInputType.MouseButton1 then
+				if inside(i.Position) then mouseDown = true end
+			end
+		end)
+		connect(UserInputService.InputEnded, function(i)
+			if i == touch then touch = nil end
+			if i.UserInputType == Enum.UserInputType.MouseButton1 then mouseDown = false end
+		end)
+
+		local function aim(x, y, cx, cy, as)
+			local dx, dy = (x - cx) / (as.X * 0.6), (y - cy) / (as.Y * 0.6)
+			local fade = 1 - math.clamp((math.max(math.abs(dx), math.abs(dy)) - 1.4) / 2, 0, 1)
+			return sat(dx) * fade, sat(dy) * fade
+		end
+
+		local function gyro(dt)
+			if not (Motion.Gyro and UserInputService.GyroscopeEnabled) then return 0, 0 end
+			local ok, _, cf = pcall(UserInputService.GetDeviceRotation, UserInputService)
+			if not ok or typeof(cf) ~= "CFrame" then return 0, 0 end
+			baseline = baseline or cf
+			baseline = baseline:Lerp(cf, math.min(1, dt * 0.6))
+			local rx, ry = (baseline:Inverse() * cf):ToEulerAnglesXYZ()
+			local sign = Motion.InvertGyro and -1 or 1
+			return sat(ry / 0.3) * sign, sat(-rx / 0.3) * sign
+		end
+
+		connect(RunService.RenderStepped, function(dt)
+			dt = math.min(dt, 1 / 20)
+			show += ((self.FxShow and 1 or 0) - show) * math.min(1, dt * 12)
+			if not main.Visible or (show < 0.01 and not self.FxShow) then
+				lastC = nil
+				return
+			end
+			if touch and (touch.UserInputState == Enum.UserInputState.End or touch.UserInputState == Enum.UserInputState.Cancel) then
+				touch = nil
+			end
+
+			local S = Motion.Strength
+			local t = os.clock() - t0
+			local w = Motion.Wave and 1 or 0
+			local amp = S * (IS_TOUCH and 1.3 or 1)
+
+			local still = (SliderLock.Active or Library.OpenPopup or Library._confirm) and 0 or 1
+			calm += (still - calm) * math.min(1, dt * 9)
+
+			local ap, as = main.AbsolutePosition, main.AbsoluteSize
+			local cx, cy = ap.X + as.X / 2, ap.Y + as.Y / 2
+
+			local tx, ty, near = 0, 0, 0
+			if Motion.Tilt and as.X > 0 and as.Y > 0 then
+				if touch then
+					tx, ty = aim(touch.Position.X, touch.Position.Y, cx, cy, as)
+					near = 1
+				elseif not IS_TOUCH then
+					local m = UserInputService:GetMouseLocation()
+					tx, ty = aim(m.X, m.Y, cx, cy, as)
+					near = inside(m) and 1 or 0
+				else
+					tx, ty = gyro(dt)
+				end
+			end
+
+			local swx, swy = 0, 0
+			if lastC and Motion.Tilt then
+				local idt = 1 / math.max(dt, 1e-3)
+				swx = sat(-(cx - lastC.X) * idt / 1800)
+				swy = sat(-(cy - lastC.Y) * idt / 1800)
+			end
+			lastC = Vector2.new(cx, cy)
+
+			stepSpring(px, sat(tx + swx * 0.9), dt, 140, 12)
+			stepSpring(py, sat(ty + swy * 0.9), dt, 140, 12)
+			stepSpring(lift, near, dt, 120, 14)
+			stepSpring(press, (mouseDown or touch) and 1 or 0, dt, 220, 16)
+
+			local wx = (math.sin(t * 0.9) + 0.45 * math.sin(t * 1.9 + 1.3)) * 0.7 * w
+			local wy = (math.cos(t * 0.75 + 0.6) + 0.45 * math.sin(t * 1.5 + 2.1)) * 0.7 * w
+			local bob = (math.sin(t * 1.15) + 0.35 * math.sin(t * 2.3 + 0.8)) * w
+
+			local TX = (px.x * S + wx * 0.34 * amp) * calm
+			local TY = (py.x * S + wy * 0.34 * amp) * calm
+			local lf = lift.x * calm
+			local pr = press.x * calm
+
+			tilt.Position = UDim2.new(0.5, TX * 3.2, 0.5, TY * 2.6 + bob * 2.4 * amp * calm)
+			tilt.Rotation = TX * 0.9
+			tiltScale.Scale = 1 + (lf * 0.010 - pr * 0.010)
+
+			if shadowHolder then
+				shadowHolder.Position = UDim2.new(0.5, -TX * 9 * S, 0.5, 5 + lf * 4 - TY * 9 * S - bob * 1.6 * calm)
+			end
+
+			local a = show * (Motion.Depth and 1 or 0) * (1 - math.clamp((Library.Transparency - 0.1) * 1.4, 0, 0.9))
+			local qx, qy = TX + wx * 0.2 * w * calm, TY + wy * 0.2 * w * calm
+			for k, pl in ipairs(plates) do
+				local lag = math.sin(t * 1.3 - k * 0.8) * 0.45 * k * w * S * calm
+				pl.Frame.Position = UDim2.new(0.5, -qx * k * 1.9 * S + lag, 0.5, -qy * k * 1.9 * S + k * 0.8)
+				pl.Frame.BackgroundTransparency = 1 - (1 - pl.Base) * a
+				pl.Stroke.Transparency = 1 - 0.55 * a * (1 - (k - 1) * 0.18)
+			end
+
+			local mag = math.min(1, math.sqrt(TX * TX + TY * TY))
+			if glare then
+				glareGrad.Offset = Vector2.new(math.clamp(TX * 0.55 + TY * 0.2, -0.85, 0.85), 0)
+				glare.BackgroundTransparency = 1 - show * (0.55 + 0.45 * math.clamp(lf, 0, 1))
+				rimGrad.Rotation = math.deg(math.atan2(TY, TX))
+				rimStroke.Transparency = 1 - math.clamp(0.25 + mag * 0.75, 0, 1) * show
+			end
+
+			if crownTile then crownTile.Position = UDim2.new(0, 12 + TX * 2.4, 0.5, TY * 2.4) end
+			if self.TitleBlock then self.TitleBlock.Position = UDim2.fromOffset(TITLE_X + TX * 1.2, TY * 1.2) end
+			if self.UserCard then self.UserCard.Position = UDim2.new(0, 8 + TX * 1.6, 1, -8 + TY * 1.6) end
+		end)
+	end
 end
 
 env.__ZystrixUI = Library
