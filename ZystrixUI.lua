@@ -356,37 +356,56 @@ local function tintIcon(img, color, t)
 	if g then tween(g, { TextColor3 = color }, t or 0.2) end
 end
 
-local SHADOW_IMAGE = "rbxassetid://5554236805"
-local SHADOW_SPREAD, SHADOW_OPACITY = 32, 0.62
+local SHADOW_STEPS, SHADOW_STEP, SHADOW_ALPHA = 14, 2, 0.02
 
 local function makeShadow(parent, radius, o)
 	o = o or {}
-	local spread = o.Spread or SHADOW_SPREAD
-	local opacity = o.Opacity or SHADOW_OPACITY
+	local steps = o.Steps or SHADOW_STEPS
+	local step = o.Step or SHADOW_STEP
+	local alpha = o.Alpha or SHADOW_ALPHA
 	local dy = o.Offset or 0
 
-	local holder = Instance.new("ImageLabel")
+	local holder = Instance.new("Frame")
 	holder.Name = "Shadow"
 	holder.BackgroundTransparency = 1
 	holder.BorderSizePixel = 0
 	holder.Active = false
 	holder.AnchorPoint = Vector2.new(0.5, 0.5)
 	holder.Position = UDim2.new(0.5, 0, 0.5, dy)
-	holder.Size = UDim2.new(1, spread * 1.5, 1, spread * 1.5)
+	holder.Size = UDim2.fromScale(1, 1)
 	holder.ZIndex = 0
-	holder.Image = SHADOW_IMAGE
-	holder.ImageColor3 = Color3.new(0, 0, 0)
-	holder.ImageTransparency = 1 - opacity
-	holder.ScaleType = Enum.ScaleType.Slice
-	holder.SliceCenter = Rect.new(23, 23, 277, 277)
 	holder.Parent = parent
+
+	local layers = {}
+	for i = steps, 1, -1 do
+		local grow = i * step
+		local layer = Instance.new("Frame")
+		layer.Name = "Layer" .. i
+		layer.BackgroundColor3 = Color3.new(0, 0, 0)
+		layer.BackgroundTransparency = 1 - alpha
+		layer.BorderSizePixel = 0
+		layer.Active = false
+		layer.AnchorPoint = Vector2.new(0.5, 0.5)
+		layer.Position = UDim2.fromScale(0.5, 0.5)
+		layer.Size = UDim2.new(1, grow * 2, 1, grow * 2)
+		layer.ZIndex = 0
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0, radius + grow)
+		c.Parent = layer
+		layer.Parent = holder
+		layers[#layers + 1] = layer
+	end
 
 	local obj = { Holder = holder }
 	function obj:Set(visible)
-		holder.ImageTransparency = visible and (1 - opacity) or 1
+		for _, l in ipairs(layers) do
+			l.BackgroundTransparency = visible and (1 - alpha) or 1
+		end
 	end
 	function obj:Fade(visible, time, style)
-		tween(holder, { ImageTransparency = visible and (1 - opacity) or 1 }, time or 0.3, style or Enum.EasingStyle.Quad)
+		for _, l in ipairs(layers) do
+			tween(l, { BackgroundTransparency = visible and (1 - alpha) or 1 }, time or 0.3, style or Enum.EasingStyle.Quad)
+		end
 	end
 	return obj
 end
@@ -757,7 +776,7 @@ function Library:Notify(o)
 	local mover = new("Frame", {
 		Position = UDim2.fromOffset(NOTIFY_OFF, 0), Size = UDim2.new(1, 0, 0, 64), Parent = slot,
 	})
-	makeShadow(mover, 12, { Spread = 14, Opacity = 0.55 })
+	makeShadow(mover, 12, { Steps = 8, Step = 2, Alpha = 0.03 })
 	local toast = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", Parent = mover })
 	corner(toast, 12)
 	local tstroke = stroke(toast)
@@ -4353,7 +4372,7 @@ function Library:CreateWindow(opts)
 	TransFrames[#TransFrames + 1] = Sidebar
 	new("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0, 1, 1, 0), Bg = "Stroke", Parent = Sidebar })
 
-	local search = new("Frame", { Position = UDim2.fromOffset(8, 8), Size = UDim2.new(1, -16, 0, 30), Bg = "Element", Parent = Sidebar })
+	local search = new("Frame", { Position = UDim2.fromOffset(8, 8), Size = UDim2.new(1, -16, 0, 30), Bg = "Element", ZIndex = 5, Parent = Sidebar })
 	corner(search, 9)
 	local sst = stroke(search)
 	gradient(search, 200)
@@ -4407,7 +4426,7 @@ function Library:CreateWindow(opts)
 	padding(self.TabList, 8, 2, 8, 6)
 	listLayout(self.TabList, 3)
 
-	self.UserCard = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 8, 1, -8), Size = UDim2.new(1, -16, 0, 44), Bg = "Element", Parent = Sidebar })
+	self.UserCard = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 8, 1, -8), Size = UDim2.new(1, -16, 0, 44), Bg = "Element", ZIndex = 5, Parent = Sidebar })
 	corner(self.UserCard, 11)
 	stroke(self.UserCard)
 	gradient(self.UserCard, 200)
