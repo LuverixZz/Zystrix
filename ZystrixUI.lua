@@ -143,7 +143,10 @@ local function new(class, props)
 		o.TextSize = 13
 		o.TextXAlignment = Enum.TextXAlignment.Left
 	end
-	if o:IsA("TextBox") then o.ClearTextOnFocus = false end
+	if o:IsA("TextBox") then
+		o.ClearTextOnFocus = false
+		pcall(function() o.ShowNativeInput = false end)
+	end
 	if isGui and props.Bg == nil and props.BackgroundColor3 == nil and props.BackgroundTransparency == nil then
 		o.BackgroundTransparency = 1
 	end
@@ -356,7 +359,7 @@ local function tintIcon(img, color, t)
 	if g then tween(g, { TextColor3 = color }, t or 0.2) end
 end
 
-local SHADOW_STEPS, SHADOW_STEP, SHADOW_ALPHA = 14, 2, 0.02
+local SHADOW_STEPS, SHADOW_STEP, SHADOW_ALPHA = 6, 4, 0.045
 
 local function makeShadow(parent, radius, o)
 	o = o or {}
@@ -776,7 +779,7 @@ function Library:Notify(o)
 	local mover = new("Frame", {
 		Position = UDim2.fromOffset(NOTIFY_OFF, 0), Size = UDim2.new(1, 0, 0, 64), Parent = slot,
 	})
-	makeShadow(mover, 12, { Steps = 8, Step = 2, Alpha = 0.03 })
+	makeShadow(mover, 12, { Steps = 4, Step = 4, Alpha = 0.05 })
 	local toast = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", Parent = mover })
 	corner(toast, 12)
 	local tstroke = stroke(toast)
@@ -1645,12 +1648,19 @@ function Section:AddTextbox(o)
 		FX.ripple(row, pos, Theme.Accent, { Radius = 8, Alpha = 0.9 })
 		tb:CaptureFocus()
 	end)
+	connect(tb:GetPropertyChangedSignal("Text"), function()
+		obj.Value = tb.Text
+		if Library.Flags and obj.Flag then Library.Flags[obj.Flag] = tb.Text end
+		if o.OnChanged then task.spawn(o.OnChanged, tb.Text) end
+	end)
 	connect(tb.Focused, function()
+		tb.TextTruncate = Enum.TextTruncate.None
 		tween(st, { Color = Theme.Accent }, 0.2)
 		tween(line, { Size = UDim2.new(1, -12, 0, 2) }, 0.35, Enum.EasingStyle.Back)
 		flashObj(row, "BackgroundColor3", Theme.Element:Lerp(Theme.Accent, 0.08), restElement, 0.1, 0.5)
 	end)
 	connect(tb.FocusLost, function()
+		tb.TextTruncate = Enum.TextTruncate.AtEnd
 		tween(st, { Color = Theme.Stroke }, 0.2)
 		tween(line, { Size = UDim2.new(0, 0, 0, 2) }, 0.25, Enum.EasingStyle.Quint)
 		obj.Value = tb.Text
@@ -1791,6 +1801,13 @@ function Section:AddLabel(o)
 				sub.TextTransparency = 0.65
 				tween(sub, { TextTransparency = 0 }, 0.35)
 			end
+			sub.Visible = s ~= ""
+		end
+	end
+	function obj:SetLive(t, s)
+		if t ~= nil and title.Text ~= t then title.Text = t end
+		if s ~= nil then
+			if sub.Text ~= s then sub.Text = s end
 			sub.Visible = s ~= ""
 		end
 	end
@@ -2722,6 +2739,7 @@ local function maxScale()
 end
 
 local PAGE_REST = UDim2.fromScale(0.5, 0.5)
+local TABCLIP_Y = 54
 
 local function relayoutSub(tab)
 	if not tab.SubFrame then return end
@@ -3078,6 +3096,7 @@ end
 function Window:_renderResults(q, results)
 	local scroll = self.SearchScroll
 	if not scroll then return end
+	self._rrTok = (self._rrTok or 0) + 1
 	for _, c in ipairs(self._srConns) do pcall(function() c:Disconnect() end) end
 	self._srConns = {}
 	for _, r in ipairs(self._srRows) do pcall(function() r.Frame:Destroy() end) end
@@ -3111,7 +3130,7 @@ function Window:_renderResults(q, results)
 			self._srEmpty = empty
 			return
 		end
-		for i, r in ipairs(results) do
+		local function build(i, r)
 			local f = new("Frame", { Size = UDim2.new(1, 0, 0, 46), Bg = "Element", LayoutOrder = i, Parent = scroll })
 			corner(f, 10)
 			local st = stroke(f)
@@ -3145,7 +3164,30 @@ function Window:_renderResults(q, results)
 			end)
 			self._srRows[i] = { Frame = f, Stroke = st }
 		end
+		local FIRST, CHUNK = 8, 6
+		for i = 1, math.min(FIRST, n) do build(i, results[i]) end
 		self:_paintSel(false)
+		if n > FIRST then
+			local myTok = self._rrTok
+			task.spawn(function()
+				local nextI = FIRST + 1
+				while nextI <= n do
+					task.wait()
+					if self._rrTok ~= myTok or not self.SearchOpen or not scroll.Parent then return end
+					Library._sink = self._srConns
+					local ok2, err2 = pcall(function()
+						for i = nextI, math.min(nextI + CHUNK - 1, n) do build(i, results[i]) end
+					end)
+					Library._sink = nil
+					if not ok2 then
+						warn("[ZystrixUI] search render: " .. tostring(err2))
+						return
+					end
+					nextI += CHUNK
+				end
+				if self._rrTok == myTok then self:_paintSel(false) end
+			end)
+		end
 	end)
 	Library._sink = nil
 	if not ok then warn("[ZystrixUI] search render: " .. tostring(err)) end
@@ -3194,7 +3236,36 @@ function Window:_closeSearchPage(restore)
 	if restore then self:_restorePage() end
 end
 
+function Window:_queueFilter(q)
+	self._qTok = (self._qTok or 0) + 1
+	local tok = self._qTok
+	if q == "" then
+		self._pendingQ = nil
+		self:_filter("")
+		return
+	end
+	self._pendingQ = q
+	task.delay(0.12, function()
+		if self._qTok == tok and self._pendingQ ~= nil then
+			local p = self._pendingQ
+			self._pendingQ = nil
+			self:_filter(p)
+		end
+	end)
+end
+
+function Window:_flushFilter()
+	if self._pendingQ ~= nil then
+		local p = self._pendingQ
+		self._pendingQ = nil
+		self._qTok = (self._qTok or 0) + 1
+		self:_filter(p)
+	end
+end
+
 function Window:ClearSearch(noRestore)
+	self._pendingQ = nil
+	self._qTok = (self._qTok or 0) + 1
 	if self.SearchOpen then self:_closeSearchPage(not noRestore) end
 	if self.SearchBox and self.SearchBox.Text ~= "" then self.SearchBox.Text = "" end
 	self:_filter("")
@@ -3295,6 +3366,7 @@ function Window:SetMinimized(state)
 	closePopup()
 	if SliderLock.Active then pcall(SliderLock.Active) end
 	self.Minimized = state
+	self:_setLoops(self.Visible and not state)
 	self._minTok = (self._minTok or 0) + 1
 	local tok = self._minTok
 
@@ -3326,6 +3398,7 @@ function Window:SetMaximized(state)
 	self._minBusy = false
 	if self.Minimized then
 		self.Minimized = false
+		self:_setLoops(self.Visible)
 		self._minTok = (self._minTok or 0) + 1
 		self.Body.Visible = true
 		tween(self.Main, { Size = UDim2.fromOffset(BASE_W, BASE_H) }, 0.35)
@@ -3334,11 +3407,20 @@ function Window:SetMaximized(state)
 	tween(self.Main, { Position = UDim2.fromScale(0.5, 0.5) }, 0.4)
 end
 
+function Window:_setLoops(on)
+	for _, tw in ipairs(self._loops or {}) do
+		pcall(function()
+			if on then tw:Play() else tw:Pause() end
+		end)
+	end
+end
+
 function Window:Toggle(state)
 	if state == nil then state = not self.Visible end
 	if state == self.Visible then return end
 	self.Visible = state
 	self.FxShow = state
+	self:_setLoops(state and not self.Minimized)
 	if self.OnToggle then pcall(self.OnToggle, state) end
 	closePopup()
 	if SliderLock.Active then pcall(SliderLock.Active) end
@@ -3387,7 +3469,7 @@ end
 
 function Window:SetUserVisible(v)
 	self.UserCard.Visible = v
-	tween(self.TabClip, { Size = UDim2.new(1, 0, 1, -(46 + (v and 60 or 8))) }, 0.25)
+	tween(self.TabClip, { Size = UDim2.new(1, 0, 1, -(TABCLIP_Y + (v and 60 or 8))) }, 0.25)
 end
 
 function Window:_statsRefresh()
@@ -4060,7 +4142,7 @@ function Window:CreateDashboard(opts)
 		sessionLbl.Text = clock(os.clock() - born)
 	end
 
-	local acc, accSec, accFr = 0, 0, 0
+	local acc, accSec, accFr, accRot = 0, 0, 0, 0
 	connect(RunService.Heartbeat, function(dt)
 		acc += dt
 		if acc >= 0.5 then
@@ -4074,8 +4156,12 @@ function Window:CreateDashboard(opts)
 		if tab.Active and win.Visible then
 			accSec += dt
 			accFr += dt
-			for _, g in ipairs(glows) do g.Rotation = (g.Rotation + dt * 14) % 360 end
-			ringG.Rotation = (ringG.Rotation + dt * 110) % 360
+			accRot += dt
+			if accRot >= 1 / 24 then
+				for _, g in ipairs(glows) do g.Rotation = (g.Rotation + accRot * 14) % 360 end
+				ringG.Rotation = (ringG.Rotation + accRot * 110) % 360
+				accRot = 0
+			end
 			if accSec >= 1 then
 				accSec = 0
 				sessionLbl.Text = clock(os.clock() - born)
@@ -4235,7 +4321,7 @@ function Library:CreateWindow(opts)
 	opts = opts or {}
 	local self = setmetatable({
 		Tabs = {}, GroupLabels = {}, TabOrder = 0, Visible = true, Minimized = false, Maximized = false,
-		Index = {}, SearchOpen = false, SearchResults = {}, _srRows = {}, _srConns = {}, _srTok = 0, _sel = 1, _lastQ = "",
+		Index = {}, SearchOpen = false, SearchResults = {}, _srRows = {}, _srConns = {}, _srTok = 0, _sel = 1, _lastQ = "", _loops = {},
 		ToggleKey = opts.ToggleKey or Enum.KeyCode.J, Searching = false, Fps = 60, Ping = 0,
 	}, Window)
 	Library.ConfigFolder = ROOT .. "/" .. (opts.ConfigFolder or "Default")
@@ -4287,7 +4373,9 @@ function Library:CreateWindow(opts)
 		corner(pill, 8)
 		padding(pill, 8, 0, 8, 0)
 		local pst = new("UIStroke", { Stk = "Accent", Thickness = 0, Transparency = 0.4, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = pill })
-		TweenService:Create(pst, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Thickness = 3, Transparency = 1 }):Play()
+		local pillLoop = TweenService:Create(pst, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Thickness = 3, Transparency = 1 })
+		pillLoop:Play()
+		self._loops[#self._loops + 1] = pillLoop
 	end
 	new("TextLabel", {
 		Text = opts.Subtitle or "", TextSize = 11, Fg = "SubText", Position = UDim2.fromOffset(0, 26),
@@ -4366,31 +4454,36 @@ function Library:CreateWindow(opts)
 		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0), NumberSequenceKeypoint.new(1, 1) }),
 		Offset = Vector2.new(-1, 0), Parent = shim,
 	})
-	TweenService:Create(grad, TweenInfo.new(2.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Offset = Vector2.new(1, 0) }):Play()
+	local shimLoop = TweenService:Create(grad, TweenInfo.new(2.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Offset = Vector2.new(1, 0) })
+	shimLoop:Play()
+	self._loops[#self._loops + 1] = shimLoop
 
 	local Sidebar = new("Frame", { Position = UDim2.fromOffset(0, 0), Size = UDim2.new(0, SIDEBAR_W, 1, 0), Bg = "Sidebar", BackgroundTransparency = Library.Transparency, ClipsDescendants = true, Parent = Body })
 	TransFrames[#TransFrames + 1] = Sidebar
 	new("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0, 1, 1, 0), Bg = "Stroke", Parent = Sidebar })
 
-	local search = new("Frame", { Position = UDim2.fromOffset(8, 8), Size = UDim2.new(1, -16, 0, 30), Bg = "Element", ZIndex = 5, Parent = Sidebar })
-	corner(search, 9)
+	local SEARCH_H = 38
+	local searchHit, searchHitZone = hitZone(Sidebar, {
+		Position = UDim2.fromOffset(0, 0), Size = UDim2.new(1, 0, 0, SEARCH_H + 12), ZIndex = 49,
+	})
+	local search = new("Frame", { Position = UDim2.fromOffset(8, 8), Size = UDim2.new(1, -16, 0, SEARCH_H), Bg = "Element", ZIndex = 50, Parent = Sidebar })
+	corner(search, 11)
 	local sst = stroke(search)
 	gradient(search, 200)
-	local searchIcon = makeIcon(search, "search", 14, "SubText", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 9, 0.5, 0) })
-	local sbox = new("TextBox", { Position = UDim2.fromOffset(30, 0), Size = UDim2.new(1, -(30 + (UserInputService.TouchEnabled and 28 or 46)), 1, 0), PlaceholderText = "Search...", Text = "", Fg = "Text", Ph = "SubText", TextSize = 12, ClipsDescendants = true, Parent = search })
+	local searchIcon = makeIcon(search, "search", 16, "SubText", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), ZIndex = 51 })
+	local sbox = new("TextBox", { Position = UDim2.fromOffset(34, 0), Size = UDim2.new(1, -(34 + (UserInputService.TouchEnabled and 32 or 50)), 1, 0), PlaceholderText = "Search...", Text = "", Fg = "Text", Ph = "SubText", TextSize = 13, ClipsDescendants = true, ZIndex = 52, Parent = search })
 	self.SearchBox = sbox
 	local kbdBadge
 	if not UserInputService.TouchEnabled then
-		kbdBadge = new("TextLabel", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(0, 16), AutomaticSize = AutoX, Bg = "Hover", Text = "Ctrl K", TextSize = 9, Fg = "SubText", TextXAlignment = Enum.TextXAlignment.Center, Parent = search })
+		kbdBadge = new("TextLabel", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(0, 18), AutomaticSize = AutoX, Bg = "Hover", Text = "Ctrl K", TextSize = 9, Fg = "SubText", TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 51, Parent = search })
 		corner(kbdBadge, 4)
 		padding(kbdBadge, 5, 0, 5, 0)
 	end
-	local focusBtn = hitZone(search, { Size = UDim2.fromOffset(30, 30), ZIndex = 4 })
-	onClick(focusBtn, function() sbox:CaptureFocus() end, true)
-	local clearBtn = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -5, 0.5, 0), Size = UDim2.fromOffset(20, 20), Bg = "Hover", Visible = false, ZIndex = 3, Parent = search })
+	onClick(searchHit, function() sbox:CaptureFocus() end, true)
+	local clearBtn = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(24, 24), Bg = "Hover", Visible = false, ZIndex = 53, Parent = search })
 	round(clearBtn)
-	makeIcon(clearBtn, "close", 10, "SubText", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
-	local clearHit = hitZone(clearBtn, { ZIndex = 6 })
+	makeIcon(clearBtn, "close", 11, "SubText", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 54 })
+	local clearHit = hitZone(clearBtn, { ZIndex = 56 })
 	onClick(clearHit, function()
 		FX.pop(clearBtn, 0.7, 0.35)
 		self:ClearSearch()
@@ -4402,6 +4495,7 @@ function Library:CreateWindow(opts)
 	connect(sbox.FocusLost, function(enter)
 		tween(sst, { Color = Theme.Stroke }, 0.2)
 		if enter then
+			self:_flushFilter()
 			local r = self.SearchResults[self._sel] or self.SearchResults[1]
 			if r then self:_goto(r) end
 		end
@@ -4413,11 +4507,11 @@ function Library:CreateWindow(opts)
 			if has then FX.pop(clearBtn, 0.6, 0.35) end
 		end
 		if kbdBadge then kbdBadge.Visible = not has end
-		self:_filter(sbox.Text)
+		self:_queueFilter(sbox.Text)
 	end)
 
 	self.TabClip = new("CanvasGroup", {
-		Name = "TabClip", Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, 0, 1, -(46 + 60)), Parent = Sidebar,
+		Name = "TabClip", Position = UDim2.fromOffset(0, TABCLIP_Y), Size = UDim2.new(1, 0, 1, -(TABCLIP_Y + 60)), Parent = Sidebar,
 	})
 	self.TabList = new("ScrollingFrame", {
 		Size = UDim2.fromScale(1, 1), CanvasSize = UDim2.new(),
@@ -4699,8 +4793,22 @@ do
 			return sat(ry / 0.3) * sign, sat(-rx / 0.3) * sign
 		end
 
+		local L = {}
+		local function chg(k, v, eps)
+			local o = L[k]
+			if o == nil or math.abs(v - o) >= eps then
+				L[k] = v
+				return true
+			end
+			return false
+		end
+		local acc3 = 0
+
 		connect(RunService.RenderStepped, function(dt)
-			dt = math.min(dt, 1 / 20)
+			acc3 += dt
+			if not (touch or mouseDown or SliderLock.Active) and acc3 < 1 / 45 then return end
+			dt = math.min(acc3, 1 / 20)
+			acc3 = 0
 			show += ((self.FxShow and 1 or 0) - show) * math.min(1, dt * 12)
 			if not main.Visible or (show < 0.01 and not self.FxShow) then
 				lastC = nil
@@ -4715,7 +4823,8 @@ do
 			local w = Motion.Wave and 1 or 0
 			local amp = S * (IS_TOUCH and 1.3 or 1)
 
-			local still = (SliderLock.Active or Library.OpenPopup or Library._confirm) and 0 or 1
+			local typing = UserInputService:GetFocusedTextBox() ~= nil
+			local still = (SliderLock.Active or Library.OpenPopup or Library._confirm or typing) and 0 or 1
 			calm += (still - calm) * math.min(1, dt * 9)
 
 			local ap, as = main.AbsolutePosition, main.AbsoluteSize
@@ -4757,34 +4866,60 @@ do
 			local lf = lift.x * calm
 			local pr = press.x * calm
 
-			tilt.Position = UDim2.new(0.5, TX * 3.2, 0.5, TY * 2.6 + bob * 2.4 * amp * calm)
-			tilt.Rotation = TX * 0.9
-			tiltScale.Scale = 1 + (lf * 0.010 - pr * 0.010)
+			local tpx, tpy = TX * 3.2, TY * 2.6 + bob * 2.4 * amp * calm
+			local c1, c2 = chg("tpx", tpx, 0.04), chg("tpy", tpy, 0.04)
+			if c1 or c2 then tilt.Position = UDim2.new(0.5, tpx, 0.5, tpy) end
+			if chg("trot", TX * 0.9, 0.004) then tilt.Rotation = TX * 0.9 end
+			local tsc = 1 + (lf * 0.010 - pr * 0.010)
+			if chg("tsc", tsc, 0.0003) then tiltScale.Scale = tsc end
 
 			if shadowHolder then
-				shadowHolder.Position = UDim2.new(0.5, -TX * 9 * S, 0.5, 5 + lf * 4 - TY * 9 * S - bob * 1.6 * calm)
+				local sx, sy = -TX * 9 * S, 5 + lf * 4 - TY * 9 * S - bob * 1.6 * calm
+				local s1, s2 = chg("shx", sx, 0.08), chg("shy", sy, 0.08)
+				if s1 or s2 then shadowHolder.Position = UDim2.new(0.5, sx, 0.5, sy) end
 			end
 
 			local a = show * (Motion.Depth and 1 or 0) * (1 - math.clamp((Library.Transparency - 0.1) * 1.4, 0, 0.9))
 			local qx, qy = TX + wx * 0.2 * w * calm, TY + wy * 0.2 * w * calm
+			local aChanged = chg("plA", a, 0.004)
 			for k, pl in ipairs(plates) do
 				local lag = math.sin(t * 1.3 - k * 0.8) * 0.45 * k * w * S * calm
-				pl.Frame.Position = UDim2.new(0.5, -qx * k * 1.5 * S + lag, 0.5, -qy * k * 1.5 * S + k * 0.5)
-				pl.Frame.BackgroundTransparency = 1 - (1 - pl.Base) * a
-				pl.Stroke.Transparency = 1 - 0.55 * a * (1 - (k - 1) * 0.18)
+				local plx, ply = -qx * k * 1.5 * S + lag, -qy * k * 1.5 * S + k * 0.5
+				local p1, p2 = chg("plx" .. k, plx, 0.06), chg("ply" .. k, ply, 0.06)
+				if p1 or p2 then pl.Frame.Position = UDim2.new(0.5, plx, 0.5, ply) end
+				if aChanged then
+					pl.Frame.BackgroundTransparency = 1 - (1 - pl.Base) * a
+					pl.Stroke.Transparency = 1 - 0.55 * a * (1 - (k - 1) * 0.18)
+				end
 			end
 
 			local mag = math.min(1, math.sqrt(TX * TX + TY * TY))
 			if glare then
-				glareGrad.Offset = Vector2.new(math.clamp(TX * 0.55 + TY * 0.2, -0.85, 0.85), 0)
-				glare.BackgroundTransparency = 1 - show * (0.55 + 0.45 * math.clamp(lf, 0, 1))
-				rimGrad.Rotation = math.deg(math.atan2(TY, TX))
-				rimStroke.Transparency = 1 - math.clamp(0.12 + mag * 0.6, 0, 1) * show
+				local go = math.clamp(TX * 0.55 + TY * 0.2, -0.85, 0.85)
+				if chg("glo", go, 0.004) then glareGrad.Offset = Vector2.new(go, 0) end
+				local gt = 1 - show * (0.55 + 0.45 * math.clamp(lf, 0, 1))
+				if chg("glt", gt, 0.003) then glare.BackgroundTransparency = gt end
+				local rr = math.deg(math.atan2(TY, TX))
+				if chg("rimr", rr, 0.5) then rimGrad.Rotation = rr end
+				local rt = 1 - math.clamp(0.12 + mag * 0.6, 0, 1) * show
+				if chg("rimt", rt, 0.004) then rimStroke.Transparency = rt end
 			end
 
-			if crownTile then crownTile.Position = UDim2.new(0, 12 + TX * 2.4, 0.5, TY * 2.4) end
-			if self.TitleBlock then self.TitleBlock.Position = UDim2.fromOffset(TITLE_X + TX * 1.2, TY * 1.2) end
-			if self.UserCard then self.UserCard.Position = UDim2.new(0, 8 + TX * 1.6, 1, -8 + TY * 1.6) end
+			if crownTile then
+				local cxp, cyp = 12 + TX * 2.4, TY * 2.4
+				local k1, k2 = chg("crx", cxp, 0.08), chg("cry", cyp, 0.08)
+				if k1 or k2 then crownTile.Position = UDim2.new(0, cxp, 0.5, cyp) end
+			end
+			if self.TitleBlock then
+				local txp, typ = TITLE_X + TX * 1.2, TY * 1.2
+				local k1, k2 = chg("ttx", txp, 0.08), chg("tty", typ, 0.08)
+				if k1 or k2 then self.TitleBlock.Position = UDim2.fromOffset(txp, typ) end
+			end
+			if self.UserCard then
+				local uxp, uyp = 8 + TX * 1.6, -8 + TY * 1.6
+				local k1, k2 = chg("ucx", uxp, 0.08), chg("ucy", uyp, 0.08)
+				if k1 or k2 then self.UserCard.Position = UDim2.new(0, uxp, 1, uyp) end
+			end
 		end)
 	end
 end
@@ -4916,11 +5051,19 @@ local Inputs = Window:AddTab({
 	Description = "Input box and keybind test.",
 })
 local it = Inputs:AddSection({ Name = "Input Box", Icon = "input", Side = "Left" })
-local echo = it:AddLabel({ Title = "Echo", Text = "Type something, then press Enter or click outside the box." })
-local nameBox = it:AddTextbox({ Name = "Username", Icon = "user", Placeholder = "Type a name...", Flag = "I_Name", Callback = function(v)
-	echo:Set("Echo", v == "" and "(empty)" or ("Username = " .. v))
-end })
-it:AddTextbox({ Name = "Numbers Only", Icon = "hash", Placeholder = "0 - 100", Flag = "I_Number", Callback = function(v)
+local echo = it:AddLabel({ Title = "Echo", Text = "Type something, the text shows up live as you type." })
+local nameBox = it:AddTextbox({ Name = "Username", Icon = "user", Placeholder = "Type a name...", Flag = "I_Name",
+	OnChanged = function(v)
+		echo:SetLive("Echo", v == "" and "(empty)" or ("Typing: " .. v))
+	end,
+	Callback = function(v)
+		echo:Set("Echo", v == "" and "(empty)" or ("Username = " .. v))
+	end })
+it:AddTextbox({ Name = "Numbers Only", Icon = "hash", Placeholder = "0 - 100", Flag = "I_Number",
+	OnChanged = function(v)
+		echo:SetLive("Echo", v == "" and "(empty)" or ("Typing: " .. v))
+	end,
+	Callback = function(v)
 	local n = tonumber(v)
 	if n then
 		echo:Set("Echo", "Valid number: " .. math.clamp(n, 0, 100))
@@ -5349,3 +5492,4 @@ local okDemo, errDemo = pcall(RunDemo)
 if not okDemo then warn("[ZystrixUI] demo error: " .. tostring(errDemo)) end
 
 return Library
+ 
