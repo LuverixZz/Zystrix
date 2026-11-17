@@ -535,11 +535,14 @@ local function fxTint(inst, c)
 	end
 end
 
-local function life(inst, t)
+local function life(inst, t, layer)
 	FX.Active += 1
 	task.delay(t, function()
 		FX.Active -= 1
 		pcall(function() inst:Destroy() end)
+		if layer and layer.Parent and layer.Name == "FxLayer" and #layer:GetChildren() <= 1 then
+			layer.Visible = false
+		end
 	end)
 end
 
@@ -558,6 +561,7 @@ local function layerOf(host, radius)
 		c.Parent = l
 		l.Parent = host
 	end
+	l.Visible = true
 	return l
 end
 
@@ -581,7 +585,7 @@ function FX.ripple(host, pos, color, opts)
 	fxTint(inst, color or Theme.Accent)
 	fxSet(inst, opts.Alpha or 0.7)
 	local t = opts.Time or 0.6
-	life(inst, t + 0.05)
+	life(inst, t + 0.05, layer)
 	tween(inst, { Size = UDim2.fromOffset(d, d) }, t, Enum.EasingStyle.Quart)
 	fxFade(inst, 1, t, Enum.EasingStyle.Quad)
 end
@@ -606,7 +610,7 @@ function FX.shine(host, color, radius)
 	})
 	g.Parent = bar
 	bar.Parent = layer
-	life(bar, 0.65)
+	life(bar, 0.65, layer)
 	tween(bar, { Position = UDim2.fromOffset(w + h, h / 2) }, 0.55, Enum.EasingStyle.Quint)
 end
 
@@ -1000,7 +1004,15 @@ local function fitLabel(lbl, maxSize, minSize)
 			end
 		end)
 	end
-	connect(lbl:GetPropertyChangedSignal("AbsoluteSize"), run)
+	local queued = false
+	connect(lbl:GetPropertyChangedSignal("AbsoluteSize"), function()
+		if queued then return end
+		queued = true
+		task.delay(0.1, function()
+			queued = false
+			if lbl.Parent then run() end
+		end)
+	end)
 	connect(lbl:GetPropertyChangedSignal("Text"), run)
 	task.defer(run)
 end
@@ -4156,10 +4168,10 @@ function Window:CreateDashboard(opts)
 		if tab.Active and win.Visible then
 			accSec += dt
 			accFr += dt
+			ringG.Rotation = (ringG.Rotation + dt * 110) % 360
 			accRot += dt
-			if accRot >= 1 / 24 then
+			if accRot >= 1 / 30 then
 				for _, g in ipairs(glows) do g.Rotation = (g.Rotation + accRot * 14) % 360 end
-				ringG.Rotation = (ringG.Rotation + accRot * 110) % 360
 				accRot = 0
 			end
 			if accSec >= 1 then
@@ -4802,13 +4814,12 @@ do
 			end
 			return false
 		end
-		local acc3 = 0
+		local sdt = 1 / 60
 
 		connect(RunService.RenderStepped, function(dt)
-			acc3 += dt
-			if not (touch or mouseDown or SliderLock.Active) and acc3 < 1 / 45 then return end
-			dt = math.min(acc3, 1 / 20)
-			acc3 = 0
+			dt = math.min(dt, 1 / 20)
+			sdt += (dt - sdt) * 0.15
+			dt = sdt
 			show += ((self.FxShow and 1 or 0) - show) * math.min(1, dt * 12)
 			if not main.Visible or (show < 0.01 and not self.FxShow) then
 				lastC = nil
@@ -4852,8 +4863,8 @@ do
 			end
 			lastC = Vector2.new(cx, cy)
 
-			stepSpring(px, sat(tx + swx * 0.9), dt, 140, 12)
-			stepSpring(py, sat(ty + swy * 0.9), dt, 140, 12)
+			stepSpring(px, sat(tx + swx * 0.9), dt, 140, 16)
+			stepSpring(py, sat(ty + swy * 0.9), dt, 140, 16)
 			stepSpring(lift, near, dt, 120, 14)
 			stepSpring(press, (mouseDown or touch) and 1 or 0, dt, 220, 16)
 
@@ -4867,15 +4878,15 @@ do
 			local pr = press.x * calm
 
 			local tpx, tpy = TX * 3.2, TY * 2.6 + bob * 2.4 * amp * calm
-			local c1, c2 = chg("tpx", tpx, 0.04), chg("tpy", tpy, 0.04)
+			local c1, c2 = chg("tpx", tpx, 0.01), chg("tpy", tpy, 0.01)
 			if c1 or c2 then tilt.Position = UDim2.new(0.5, tpx, 0.5, tpy) end
-			if chg("trot", TX * 0.9, 0.004) then tilt.Rotation = TX * 0.9 end
+			if chg("trot", TX * 0.9, 0.002) then tilt.Rotation = TX * 0.9 end
 			local tsc = 1 + (lf * 0.010 - pr * 0.010)
 			if chg("tsc", tsc, 0.0003) then tiltScale.Scale = tsc end
 
 			if shadowHolder then
 				local sx, sy = -TX * 9 * S, 5 + lf * 4 - TY * 9 * S - bob * 1.6 * calm
-				local s1, s2 = chg("shx", sx, 0.08), chg("shy", sy, 0.08)
+				local s1, s2 = chg("shx", sx, 0.02), chg("shy", sy, 0.02)
 				if s1 or s2 then shadowHolder.Position = UDim2.new(0.5, sx, 0.5, sy) end
 			end
 
@@ -4885,7 +4896,7 @@ do
 			for k, pl in ipairs(plates) do
 				local lag = math.sin(t * 1.3 - k * 0.8) * 0.45 * k * w * S * calm
 				local plx, ply = -qx * k * 1.5 * S + lag, -qy * k * 1.5 * S + k * 0.5
-				local p1, p2 = chg("plx" .. k, plx, 0.06), chg("ply" .. k, ply, 0.06)
+				local p1, p2 = chg("plx" .. k, plx, 0.02), chg("ply" .. k, ply, 0.02)
 				if p1 or p2 then pl.Frame.Position = UDim2.new(0.5, plx, 0.5, ply) end
 				if aChanged then
 					pl.Frame.BackgroundTransparency = 1 - (1 - pl.Base) * a
@@ -4905,19 +4916,20 @@ do
 				if chg("rimt", rt, 0.004) then rimStroke.Transparency = rt end
 			end
 
+			local IX, IY = px.x * S * calm, py.x * S * calm
 			if crownTile then
-				local cxp, cyp = 12 + TX * 2.4, TY * 2.4
-				local k1, k2 = chg("crx", cxp, 0.08), chg("cry", cyp, 0.08)
+				local cxp, cyp = 12 + IX * 2.4, IY * 2.4
+				local k1, k2 = chg("crx", cxp, 0.05), chg("cry", cyp, 0.05)
 				if k1 or k2 then crownTile.Position = UDim2.new(0, cxp, 0.5, cyp) end
 			end
 			if self.TitleBlock then
-				local txp, typ = TITLE_X + TX * 1.2, TY * 1.2
-				local k1, k2 = chg("ttx", txp, 0.08), chg("tty", typ, 0.08)
+				local txp, typ = TITLE_X + IX * 1.2, IY * 1.2
+				local k1, k2 = chg("ttx", txp, 0.05), chg("tty", typ, 0.05)
 				if k1 or k2 then self.TitleBlock.Position = UDim2.fromOffset(txp, typ) end
 			end
 			if self.UserCard then
-				local uxp, uyp = 8 + TX * 1.6, -8 + TY * 1.6
-				local k1, k2 = chg("ucx", uxp, 0.08), chg("ucy", uyp, 0.08)
+				local uxp, uyp = 8 + IX * 1.6, -8 + IY * 1.6
+				local k1, k2 = chg("ucx", uxp, 0.05), chg("ucy", uyp, 0.05)
 				if k1 or k2 then self.UserCard.Position = UDim2.new(0, uxp, 1, uyp) end
 			end
 		end)
