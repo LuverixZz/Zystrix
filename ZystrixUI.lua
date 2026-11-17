@@ -4219,99 +4219,387 @@ function Library:Confirm(o)
 	Library._confirm = true
 	closePopup()
 
+	local W = 320
+	local danger = o.Danger
+	if danger == nil then danger = (o.Icon == "close" or o.Icon == "trash") end
+	local RED = Color3.fromRGB(220, 50, 60)
+	local WHITE = Color3.new(1, 1, 1)
+	local tone = danger and RED or Theme.Accent
+	local KP = NumberSequenceKeypoint.new
+
+	local body = o.Content or ""
+	local textH = 0
+	if body ~= "" then
+		local okS, sz = pcall(function()
+			return TextService:GetTextSize(body, 12, FONT, Vector2.new(W - 40, 10000))
+		end)
+		textH = (okS and sz) and (math.ceil(sz.Y) + 3) or (math.ceil(#body / 44) * 15 + 3)
+	end
+	local textY = 78
+	local btnY = textY + (textH > 0 and (textH + 16) or 0)
+	local H = btnY + 38 + 18
+
 	local vp = viewport()
-	local s = math.min(1, vp.X * 0.92 / 300, vp.Y * 0.92 / 220)
+	local s = math.min(1, vp.X * 0.92 / W, vp.Y * 0.92 / H)
 
 	local blocker = new("TextButton", {
 		Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1,
 		ZIndex = 100, Parent = Gui,
 	})
+	local root = new("Frame", {
+		Name = "Confirm", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 26),
+		Size = UDim2.fromOffset(W, H), ZIndex = 101, Parent = Gui,
+	})
+	local rootScale = new("UIScale", { Scale = s * 0.88, Parent = root })
+	local tilt = new("Frame", {
+		Name = "Tilt", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1), Parent = root,
+	})
+	local tiltScale = new("UIScale", { Parent = tilt })
+
+	local shadow = makeShadow(tilt, 16, { Steps = 6, Step = 5, Alpha = 0.055, Offset = 6 })
+	shadow:Set(false)
+
+	local plates = {}
+	for k = 1, 2 do
+		local f = new("Frame", {
+			Name = "Plate" .. k, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(1, -k * 12, 1, -k * 12), Bg = "Sidebar", BackgroundTransparency = 1, ZIndex = 1, Parent = tilt,
+		})
+		corner(f, 16)
+		local st = stroke(f, "Stroke", 1)
+		st.Transparency = 1
+		plates[k] = { Frame = f, Stroke = st, Base = 0.3 + k * 0.2 }
+	end
+
 	local card = new("CanvasGroup", {
-		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(300, 0),
-		AutomaticSize = AutoY, Bg = "Card", GroupTransparency = 1, Active = true, ZIndex = 101, Parent = Gui,
+		Name = "Card", Size = UDim2.fromScale(1, 1), Bg = "Card", GroupTransparency = 1, Active = true, ZIndex = 2, Parent = tilt,
 	})
-	corner(card, 14)
-	local cardStroke = stroke(card)
-	cardStroke.Transparency = 1
-	gradient(card, 220)
-	padding(card, 18, 16, 18, 16)
-	listLayout(card, 10)
-	local scale = new("UIScale", { Scale = s * 0.92, Parent = card })
+	corner(card, 16)
+	gradient(card, 225)
 
-	local head = new("Frame", { Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 1, Parent = card })
-	local cbox = iconTile(head, o.Icon or "info", 26, 15, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0) })
-	new("TextLabel", {
-		Text = o.Title or "Confirm", Font = FONT_BOLD, TextSize = 15, Fg = "Text",
-		Position = UDim2.fromOffset(34, 0), Size = UDim2.new(1, -34, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
+	local chrome = new("Frame", { Name = "Chrome", Size = UDim2.fromScale(1, 1), ZIndex = 6, Active = false, Parent = tilt })
+	corner(chrome, 16)
+	local outStroke = stroke(chrome)
+	outStroke.Transparency = 1
+
+	local glare = new("Frame", {
+		Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, Active = false, Parent = chrome,
 	})
-	new("TextLabel", {
-		Text = o.Content or "", TextSize = 12, Fg = "SubText", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY,
-		TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 2, Parent = card,
+	corner(glare, 16)
+	local glareGrad = new("UIGradient", {
+		Rotation = 28,
+		Transparency = NumberSequence.new({ KP(0, 1), KP(0.3, 0.985), KP(0.5, 0.92), KP(0.7, 0.985), KP(1, 1) }),
+		Parent = glare,
 	})
 
-	local row = new("Frame", { Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 3, Parent = card })
-	new("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = row,
+	local rim = new("Frame", { Size = UDim2.fromScale(1, 1), Active = false, Parent = chrome })
+	corner(rim, 16)
+	local rimStroke = stroke(rim, "Accent", 1.5)
+	if danger then rimStroke.Color = RED end
+	rimStroke.Transparency = 1
+	local rimGrad = new("UIGradient", {
+		Transparency = NumberSequence.new({ KP(0, 1), KP(0.5, 1), KP(0.8, 0.45), KP(0.95, 0.1), KP(1, 0.1) }),
+		Parent = rimStroke,
 	})
+
+	local shimLine = new("Frame", {
+		Position = UDim2.fromOffset(24, 0), Size = UDim2.new(1, -48, 0, 1), BackgroundColor3 = tone, BackgroundTransparency = 0, Parent = chrome,
+	})
+	local shimGrad = new("UIGradient", {
+		Transparency = NumberSequence.new({ KP(0, 1), KP(0.5, 0.05), KP(1, 1) }), Offset = Vector2.new(-1, 0), Parent = shimLine,
+	})
+	local shimTween = TweenService:Create(shimGrad, TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Offset = Vector2.new(1, 0) })
+
+	local ringF = new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(37, 35), Size = UDim2.fromOffset(34, 34), Active = false, Visible = false, Parent = chrome,
+	})
+	round(ringF)
+	local ringStroke = new("UIStroke", { Color = tone, Thickness = 1.5, Transparency = 0.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = ringF })
+	local ringInfo = TweenInfo.new(1.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, -1, false)
+	local ringT1 = TweenService:Create(ringF, ringInfo, { Size = UDim2.fromOffset(48, 48) })
+	local ringT2 = TweenService:Create(ringStroke, ringInfo, { Transparency = 1 })
+
+	local tile, tileImg
+	if danger then
+		tile, tileImg = iconTile(card, o.Icon or "info", 34, 18, { Position = UDim2.fromOffset(20, 18) }, true)
+		tile.BackgroundColor3 = RED
+		tintIcon(tileImg, WHITE, 0.01)
+	else
+		tile, tileImg = iconTile(card, o.Icon or "info", 34, 18, { Position = UDim2.fromOffset(20, 18) })
+	end
+
+	local titleBlock = new("Frame", { Position = UDim2.fromOffset(64, 0), Size = UDim2.fromOffset(W - 84, 60), Parent = card })
+	local tag = new("TextLabel", {
+		Text = string.upper(o.Tag or (danger and "Warning" or "Confirm")), Font = FONT_BOLD, TextSize = 9, Fg = "SubText",
+		Position = UDim2.fromOffset(0, 20), Size = UDim2.new(1, 0, 0, 11), Parent = titleBlock,
+	})
+	if danger then tag.TextColor3 = RED end
+	new("TextLabel", {
+		Text = o.Title or "Confirm", Font = FONT_BOLD, TextSize = 16, Fg = "Text",
+		Position = UDim2.fromOffset(0, 31), Size = UDim2.new(1, 0, 0, 20), TextTruncate = Enum.TextTruncate.AtEnd, Parent = titleBlock,
+	})
+
+	if textH > 0 then
+		new("Frame", { Position = UDim2.fromOffset(20, 64), Size = UDim2.new(1, -40, 0, 1), Bg = "Stroke", Parent = card })
+		new("TextLabel", {
+			Text = body, TextSize = 12, Fg = "SubText", Position = UDim2.fromOffset(20, textY), Size = UDim2.new(1, -40, 0, textH),
+			TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, Parent = card,
+		})
+	end
+
+	local bw = (W - 40 - 10) / 2
 	local cancel = new("TextButton", {
-		Size = UDim2.new(0.5, -4, 1, 0), Bg = "Element", Text = o.CancelText or "Cancel", Font = FONT_BOLD, Fg = "Text",
-		TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 1, Parent = row,
+		Position = UDim2.fromOffset(20, btnY), Size = UDim2.fromOffset(bw, 38), Bg = "Element", Text = o.CancelText or "Cancel",
+		Font = FONT_BOLD, TextSize = 13, Fg = "Text", TextXAlignment = Enum.TextXAlignment.Center, Parent = card,
 	})
-	corner(cancel, 9)
+	corner(cancel, 11)
 	stroke(cancel)
 	gradient(cancel, 185)
-	local RED = Color3.fromRGB(220, 50, 60)
-	local ok = new("TextButton", {
-		Size = UDim2.new(0.5, -4, 1, 0), BackgroundColor3 = RED, Text = o.ConfirmText or "Yes", Font = FONT_BOLD,
-		TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 2, Parent = row,
-	})
-	corner(ok, 9)
-	gradient(ok, 190)
-	onHover(cancel,
-		function() tween(cancel, { BackgroundColor3 = Theme.Hover }, 0.15) end,
-		function() tween(cancel, { BackgroundColor3 = Theme.Element }, 0.2) end)
-	onHover(ok,
-		function() tween(ok, { BackgroundColor3 = RED:Lerp(Color3.new(1, 1, 1), 0.15) }, 0.15) end,
-		function() tween(ok, { BackgroundColor3 = RED }, 0.2) end)
+	local okProps = {
+		Position = UDim2.fromOffset(20 + bw + 10, btnY), Size = UDim2.fromOffset(bw, 38), Text = o.ConfirmText or "Yes",
+		Font = FONT_BOLD, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, Parent = card,
+	}
+	if danger then
+		okProps.BackgroundColor3 = RED
+		okProps.TextColor3 = WHITE
+	else
+		okProps.Bg = "Accent"
+		okProps.Fg = "AccentText"
+	end
+	local okb = new("TextButton", okProps)
+	corner(okb, 11)
+	gradient(okb, 200)
+	local function okRest() return danger and RED or Theme.Accent end
+	local cancelSc, okSc = fxScale(cancel), fxScale(okb)
 
-	local closed, escCon = false, nil
+	onHover(cancel,
+		function()
+			tween(cancel, { BackgroundColor3 = Theme.Hover }, 0.15)
+			tween(cancelSc, { Scale = 1.03 }, 0.15, Enum.EasingStyle.Quad)
+		end,
+		function()
+			tween(cancel, { BackgroundColor3 = Theme.Element }, 0.2)
+			tween(cancelSc, { Scale = 1 }, 0.2)
+		end)
+	onHover(okb,
+		function()
+			tween(okb, { BackgroundColor3 = okRest():Lerp(WHITE, 0.14) }, 0.15)
+			tween(okSc, { Scale = 1.03 }, 0.15, Enum.EasingStyle.Quad)
+		end,
+		function()
+			tween(okb, { BackgroundColor3 = okRest() }, 0.2)
+			tween(okSc, { Scale = 1 }, 0.2)
+		end)
+	cancel.MouseButton1Down:Connect(function() tween(cancelSc, { Scale = 0.94 }, 0.06) end)
+	cancel.MouseButton1Up:Connect(function() tween(cancelSc, { Scale = 1 }, 0.25, Enum.EasingStyle.Back) end)
+	okb.MouseButton1Down:Connect(function() tween(okSc, { Scale = 0.94 }, 0.06) end)
+	okb.MouseButton1Up:Connect(function() tween(okSc, { Scale = 1 }, 0.25, Enum.EasingStyle.Back) end)
+
+	local closed, escCon, endCon, loopCon = false, nil, nil, nil
+	local touch, mouseDown = nil, false
+
 	local function close(cb)
 		if closed then return end
 		closed = true
 		Library._confirm = nil
 		if escCon then escCon:Disconnect() end
+		if endCon then endCon:Disconnect() end
 		blocker.Active = false
 		card.Active = false
-		cardStroke.Enabled = false
-		tween(blocker, { BackgroundTransparency = 1 }, 0.12)
-		tween(card, { GroupTransparency = 1 }, 0.12)
-		tween(scale, { Scale = s * 0.94 }, 0.12)
-		task.delay(0.13, function()
+		chrome.Visible = false
+		for _, pl in ipairs(plates) do pl.Stroke.Enabled = false end
+		pcall(function() shimTween:Cancel() end)
+		pcall(function() ringT1:Cancel() end)
+		pcall(function() ringT2:Cancel() end)
+		tween(blocker, { BackgroundTransparency = 1 }, 0.16)
+		tween(card, { GroupTransparency = 1 }, 0.14)
+		tween(rootScale, { Scale = s * 0.92 }, 0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		shadow:Fade(false, 0.14)
+		task.delay(0.18, function()
+			if loopCon then loopCon:Disconnect() end
 			pcall(function() blocker:Destroy() end)
-			pcall(function() card:Destroy() end)
+			pcall(function() root:Destroy() end)
 			prune()
 		end)
 		if cb then task.spawn(cb) end
 	end
+
+	local function inside(pos)
+		local ap, as = root.AbsolutePosition, root.AbsoluteSize
+		return pos.X >= ap.X and pos.X <= ap.X + as.X and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y
+	end
+
 	escCon = UserInputService.InputBegan:Connect(function(i)
-		if i.KeyCode == Enum.KeyCode.Escape then close(o.OnCancel) end
+		local kc = i.KeyCode
+		if kc == Enum.KeyCode.Escape then
+			close(o.OnCancel)
+			return
+		end
+		if (kc == Enum.KeyCode.Return or kc == Enum.KeyCode.KeypadEnter) and not danger and not UserInputService:GetFocusedTextBox() then
+			close(o.Callback)
+			return
+		end
+		local ty = i.UserInputType
+		if ty == Enum.UserInputType.Touch then
+			if inside(i.Position) then touch = i end
+		elseif ty == Enum.UserInputType.MouseButton1 then
+			if inside(i.Position) then mouseDown = true end
+		end
 	end)
+	endCon = UserInputService.InputEnded:Connect(function(i)
+		if i == touch then touch = nil end
+		if i.UserInputType == Enum.UserInputType.MouseButton1 then mouseDown = false end
+	end)
+
 	onClick(blocker, function() close(o.OnCancel) end)
 	onClick(cancel, function(pos)
-		FX.ripple(cancel, pos, Theme.Accent, { Radius = 9, Alpha = 0.75, Time = 0.4 })
+		FX.ripple(cancel, pos, Theme.Accent, { Radius = 11, Alpha = 0.75, Time = 0.4 })
 		close(o.OnCancel)
 	end, true)
-	onClick(ok, function(pos)
-		FX.ripple(ok, pos, Color3.new(1, 1, 1), { Radius = 9, Alpha = 0.7, Time = 0.4 })
+	onClick(okb, function(pos)
+		FX.ripple(okb, pos, WHITE, { Radius = 11, Alpha = 0.7, Time = 0.4 })
+		FX.shine(okb, WHITE, 11)
 		close(o.Callback)
 	end, true)
 
-	tween(blocker, { BackgroundTransparency = 0.45 }, 0.2)
-	tween(card, { GroupTransparency = 0 }, 0.2)
-	tween(cardStroke, { Transparency = 0 }, 0.2)
-	tween(scale, { Scale = s }, 0.28, Enum.EasingStyle.Back)
+	local px, py, lift, press = { x = 0, v = 0 }, { x = 0, v = 0 }, { x = 0, v = 0 }, { x = 0, v = 0 }
+	local spread, vis = 0, 0
+	local t0 = os.clock()
+	local L = {}
+	local function chg(k, v, eps)
+		local old = L[k]
+		if old == nil or math.abs(v - old) >= eps then
+			L[k] = v
+			return true
+		end
+		return false
+	end
+	local function stepS(sp, target, dt, k, d)
+		sp.v += ((target - sp.x) * k - sp.v * d) * dt
+		sp.x += sp.v * dt
+	end
+	local function sat(x) return math.clamp(x, -1, 1) end
+	local function aim(x, y, cx, cy, as)
+		local dx, dy = (x - cx) / (as.X * 0.7), (y - cy) / (as.Y * 0.7)
+		local fade = 1 - math.clamp((math.max(math.abs(dx), math.abs(dy)) - 1.4) / 2, 0, 1)
+		return sat(dx) * fade, sat(dy) * fade
+	end
+
+	loopCon = RunService.RenderStepped:Connect(function(dt)
+		if not root.Parent then
+			loopCon:Disconnect()
+			return
+		end
+		dt = math.min(dt, 1 / 20)
+		local alive = closed and 0 or 1
+		vis += (alive - vis) * math.min(1, dt * 10)
+		spread += (alive - spread) * math.min(1, dt * 6)
+		if touch and (touch.UserInputState == Enum.UserInputState.End or touch.UserInputState == Enum.UserInputState.Cancel) then
+			touch = nil
+		end
+
+		local t = os.clock() - t0
+		local amp = IS_TOUCH and 1.3 or 1
+		local ap, as = root.AbsolutePosition, root.AbsoluteSize
+		local cx, cy = ap.X + as.X / 2, ap.Y + as.Y / 2
+
+		local tx, ty, near = 0, 0, 0
+		if as.X > 0 and as.Y > 0 then
+			if touch then
+				tx, ty = aim(touch.Position.X, touch.Position.Y, cx, cy, as)
+				near = 1
+			elseif not IS_TOUCH then
+				local m = UserInputService:GetMouseLocation()
+				tx, ty = aim(m.X, m.Y, cx, cy, as)
+				near = inside(m) and 1 or 0
+			end
+		end
+
+		stepS(px, tx, dt, 150, 16)
+		stepS(py, ty, dt, 150, 16)
+		stepS(lift, near, dt, 120, 14)
+		stepS(press, (mouseDown or touch) and 1 or 0, dt, 220, 16)
+
+		local wx = (math.sin(t * 0.9) + 0.45 * math.sin(t * 1.9 + 1.3)) * 0.7
+		local wy = (math.cos(t * 0.75 + 0.6) + 0.45 * math.sin(t * 1.5 + 2.1)) * 0.7
+		local bob = math.sin(t * 1.15) + 0.35 * math.sin(t * 2.3 + 0.8)
+
+		local TX = px.x + wx * 0.3 * amp
+		local TY = py.x + wy * 0.3 * amp
+		local lf, pr = lift.x, press.x
+
+		local tpx, tpy = TX * 4, TY * 3 + bob * 1.6 * amp
+		local c1, c2 = chg("tpx", tpx, 0.01), chg("tpy", tpy, 0.01)
+		if c1 or c2 then tilt.Position = UDim2.new(0.5, tpx, 0.5, tpy) end
+		if chg("trot", TX * 1.2, 0.002) then tilt.Rotation = TX * 1.2 end
+		local tsc = 1 + lf * 0.012 - pr * 0.014
+		if chg("tsc", tsc, 0.0003) then tiltScale.Scale = tsc end
+
+		local sx, sy = -TX * 10, 6 + lf * 4 - TY * 10 - bob * 1.2
+		local s1, s2 = chg("shx", sx, 0.02), chg("shy", sy, 0.02)
+		if s1 or s2 then shadow.Holder.Position = UDim2.new(0.5, sx, 0.5, sy) end
+
+		local aCh = chg("pa", vis, 0.004)
+		for k, pl in ipairs(plates) do
+			local plx, ply = -TX * k * 3, k * 9 * spread - TY * k * 2.4
+			local p1, p2 = chg("plx" .. k, plx, 0.02), chg("ply" .. k, ply, 0.02)
+			if p1 or p2 then pl.Frame.Position = UDim2.new(0.5, plx, 0.5, ply) end
+			if aCh then
+				pl.Frame.BackgroundTransparency = 1 - (1 - pl.Base) * vis
+				pl.Stroke.Transparency = 1 - 0.55 * vis * (1 - (k - 1) * 0.2)
+			end
+		end
+
+		local go = math.clamp(TX * 0.55 + TY * 0.2, -0.85, 0.85)
+		if chg("glo", go, 0.004) then glareGrad.Offset = Vector2.new(go, 0) end
+		local gt = 1 - vis * (0.5 + 0.5 * math.clamp(lf, 0, 1))
+		if chg("glt", gt, 0.003) then glare.BackgroundTransparency = gt end
+		local rr = math.deg(math.atan2(TY, TX))
+		if chg("rimr", rr, 0.5) then rimGrad.Rotation = rr end
+		local mag = math.min(1, math.sqrt(TX * TX + TY * TY))
+		local rt = 1 - math.clamp(0.12 + mag * 0.6, 0, 1) * vis
+		if chg("rimt", rt, 0.004) then rimStroke.Transparency = rt end
+
+		local IX, IY = px.x, py.x
+		local i1, i2 = chg("tlx", IX, 0.015), chg("tly", IY, 0.015)
+		if i1 or i2 then
+			tile.Position = UDim2.fromOffset(20 + IX * 3, 18 + IY * 3)
+			titleBlock.Position = UDim2.fromOffset(64 + IX * 1.5, IY * 1.5)
+		end
+	end)
+
+	tween(blocker, { BackgroundTransparency = 0.5 }, 0.25)
+	tween(root, { Position = UDim2.fromScale(0.5, 0.5) }, 0.5, Enum.EasingStyle.Quint)
+	tween(rootScale, { Scale = s }, 0.45, Enum.EasingStyle.Back)
+	tween(card, { GroupTransparency = 0 }, 0.22)
+	tween(outStroke, { Transparency = 0 }, 0.25)
+	shadow:Fade(true, 0.4)
+
 	task.delay(0.12, function()
-		if cbox.Parent then FX.pop(cbox, 0.3, 0.55) end
+		if closed or not tile.Parent then return end
+		FX.pop(tile, 0.3, 0.55)
+	end)
+	task.delay(0.2, function()
+		if closed or not cancel.Parent then return end
+		FX.pop(cancel, 0.85, 0.5)
+	end)
+	task.delay(0.26, function()
+		if closed or not okb.Parent then return end
+		FX.pop(okb, 0.85, 0.5)
+	end)
+	task.delay(0.22, function()
+		if closed or not tile.Parent then return end
+		local c = tile.AbsolutePosition + tile.AbsoluteSize / 2
+		FX.ring(c, tone, 22 * s, 84 * s, 0.6, 0.35)
+		FX.burst(c, tone, 5, 38 * s, { Size = 8 * s })
+	end)
+	task.delay(0.4, function()
+		if closed then return end
+		ringF.Visible = true
+		shimTween:Play()
+		ringT1:Play()
+		ringT2:Play()
 	end)
 end
 
@@ -4323,6 +4611,7 @@ function Window:RequestClose()
 		ConfirmText = "Close UI",
 		CancelText = "Cancel",
 		Icon = "close",
+		Danger = true,
 		Callback = function() Library:Unload() end,
 	})
 end
