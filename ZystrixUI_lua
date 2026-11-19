@@ -8,6 +8,7 @@ local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
 local Stats = game:GetService("Stats")
 local TextService = game:GetService("TextService")
+local GuiService = game:GetService("GuiService")
 local LocalPlayer = Players.LocalPlayer
 while not LocalPlayer do
 	Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
@@ -118,6 +119,14 @@ local function tween(obj, props, time, style, dir)
 	local t = TweenService:Create(obj, TweenInfo.new(time or 0.2, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out), props)
 	t:Play()
 	return t
+end
+
+local function snap(v, step)
+	return math.floor(v / step + 0.5) * step
+end
+
+local function toScreen(p)
+	return Vector2.new(p.X, p.Y + GuiService:GetGuiInset().Y)
 end
 
 local function bind(obj, prop, key)
@@ -359,7 +368,7 @@ local function tintIcon(img, color, t)
 	if g then tween(g, { TextColor3 = color }, t or 0.2) end
 end
 
-local SHADOW_STEPS, SHADOW_STEP, SHADOW_ALPHA = 6, 4, 0.045
+local SHADOW_STEPS, SHADOW_STEP, SHADOW_ALPHA = IS_TOUCH and 3 or 6, IS_TOUCH and 8 or 4, IS_TOUCH and 0.075 or 0.045
 
 local function makeShadow(parent, radius, o)
 	o = o or {}
@@ -456,7 +465,7 @@ local FX = {
 		spark = "rbxassetid://111044800239623",
 		tick = "rbxassetid://93898873302694",
 	},
-	Ready = true, Active = 0, MAX = 40,
+	Ready = true, Active = 0, MAX = IS_TOUCH and 18 or 40,
 }
 Library.FX = FX
 
@@ -974,47 +983,10 @@ local function indexItem(sec, name, kind, row, icon)
 	end
 end
 
-local function fitLabel(lbl, maxSize, minSize)
-	local lastW, lastText = -1, nil
-	local function run()
-		local sc = math.max(getScale(), 0.05)
-		local w, h = lbl.AbsoluteSize.X / sc, lbl.AbsoluteSize.Y / sc
-		if w <= 4 then return end
-		local text = lbl.Text
-		if lastText == text and math.abs(w - lastW) < 2.5 then return end
-		lastW, lastText = w, text
-		pcall(function()
-			for s = maxSize, minSize, -1 do
-				local b = TextService:GetTextSize(text, s, lbl.Font, Vector2.new(10000, 10000))
-				if b.X <= w then
-					lbl.TextWrapped = false
-					lbl.TextSize = s
-					return
-				end
-			end
-			if h >= 30 then
-				lbl.TextWrapped = true
-				local s = minSize + 1
-				local b = TextService:GetTextSize(text, s, lbl.Font, Vector2.new(w, 10000))
-				if b.Y > h then s = minSize end
-				lbl.TextSize = s
-			else
-				lbl.TextWrapped = false
-				lbl.TextSize = minSize
-			end
-		end)
-	end
-	local queued = false
-	connect(lbl:GetPropertyChangedSignal("AbsoluteSize"), function()
-		if queued then return end
-		queued = true
-		task.delay(0.1, function()
-			queued = false
-			if lbl.Parent then run() end
-		end)
-	end)
-	connect(lbl:GetPropertyChangedSignal("Text"), run)
-	task.defer(run)
+local function fitLabel(lbl, size, height)
+	lbl.TextSize = size
+	lbl.TextTruncate = Enum.TextTruncate.AtEnd
+	lbl.TextWrapped = height >= 30
 end
 
 local function rowLabel(row, text, width, shift)
@@ -1025,7 +997,7 @@ local function rowLabel(row, text, width, shift)
 		Size = UDim2.new(width.X.Scale, width.X.Offset - shift - 12, width.Y.Scale, width.Y.Offset),
 		TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
 	})
-	fitLabel(lbl, 13, 10)
+	fitLabel(lbl, 13, row.Size.Y.Offset * width.Y.Scale + width.Y.Offset)
 	return lbl
 end
 
@@ -1314,7 +1286,6 @@ function Section:AddSlider(o)
 		tween(knob, { Size = UDim2.fromOffset(14, 14) }, 0.3, Enum.EasingStyle.Back)
 		tween(track, { Size = UDim2.new(1, -24, 0, 6) }, 0.3, Enum.EasingStyle.Back)
 		if vst then tween(vst, { Color = Theme.Stroke }, 0.25) end
-		FX.pop(valueLbl, 1.14, 0.45)
 		if halo then tween(halo, { ImageTransparency = 1 }, 0.3) end
 		local s = uiScale(knob)
 		FX.ring(knobCenter(), Theme.Accent, 14 * s, 34 * s, 0.4, 0.4)
@@ -1604,20 +1575,19 @@ function Section:AddButton(o)
 		})
 	end
 
-	local sc = new("UIScale", { Parent = target })
 	local function base() return primary and Theme.Text or Theme.Hover end
 	local function over() return primary and Theme.Text:Lerp(Theme.Background, 0.15) or Theme.Stroke end
 	onHover(hit,
-		function()
-			tween(target, { BackgroundColor3 = over() }, 0.15)
-			tween(sc, { Scale = primary and 1.01 or 1.05 }, 0.18, Enum.EasingStyle.Back)
-		end,
-		function()
-			tween(target, { BackgroundColor3 = base() }, 0.2)
-			tween(sc, { Scale = 1 }, 0.2, Enum.EasingStyle.Quad)
-		end)
-	connect(hit.MouseButton1Down, function() tween(sc, { Scale = 0.95 }, 0.06) end)
-	connect(hit.MouseButton1Up, function() tween(sc, { Scale = 1 }, 0.3, Enum.EasingStyle.Back) end)
+		function() tween(target, { BackgroundColor3 = over() }, 0.15) end,
+		function() tween(target, { BackgroundColor3 = base() }, 0.2) end)
+	connect(hit.MouseButton1Down, function()
+		if IS_TOUCH then return end
+		tween(target, { BackgroundColor3 = over():Lerp(Theme.Background, 0.12) }, 0.06)
+	end)
+	connect(hit.MouseButton1Up, function()
+		if IS_TOUCH then return end
+		tween(target, { BackgroundColor3 = over() }, 0.2)
+	end)
 	onClick(hit, function(pos)
 		FX.ripple(target, pos, primary and Theme.Background or Theme.Accent, { Radius = primary and 8 or 8, Alpha = primary and 0.78 or 0.8, Time = 0.55 })
 		if iconImg then FX.pop(iconImg, 1.45, 0.5) end
@@ -1677,7 +1647,6 @@ function Section:AddTextbox(o)
 		tween(line, { Size = UDim2.new(0, 0, 0, 2) }, 0.25, Enum.EasingStyle.Quint)
 		obj.Value = tb.Text
 		fire(obj, o)
-		FX.pop(tb, 0.96, 0.4)
 		FX.ring(Vector2.new(tb.AbsolutePosition.X + tb.AbsoluteSize.X / 2, tb.AbsolutePosition.Y + tb.AbsoluteSize.Y / 2), Theme.Accent, tb.AbsoluteSize.Y * 0.8, tb.AbsoluteSize.X * 1.05, 0.4, 0.75)
 	end)
 	function obj:Set(v, silent)
@@ -1738,7 +1707,6 @@ function Section:AddKeybind(o)
 		if v then
 			pulse = TweenService:Create(st, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Transparency = 0.75 })
 			pulse:Play()
-			FX.pop(btn, 0.92, 0.4)
 		end
 		render()
 	end
@@ -1754,7 +1722,6 @@ function Section:AddKeybind(o)
 		if not silent then
 			render(true)
 			if was then
-				FX.pop(btn, 1.2, 0.5)
 				local s = uiScale(btn)
 				local c = Vector2.new(btn.AbsolutePosition.X + btn.AbsoluteSize.X / 2, btn.AbsolutePosition.Y + btn.AbsoluteSize.Y / 2)
 				FX.ring(c, Theme.Accent, 16 * s, 52 * s, 0.45, 0.3)
@@ -2089,7 +2056,6 @@ function Section:AddSegmented(o)
 		if changed then
 			place(idx, false)
 			paintLabels(false)
-			FX.pop(labels[idx], 1.3, 0.45)
 			if click then
 				FX.ripple(row, typeof(click) == "Vector2" and click or nil, Theme.Accent, { Radius = 8, Alpha = 0.85 })
 			end
@@ -2169,7 +2135,6 @@ function Section:AddChips(o)
 		paintChip(chips[name], on, false)
 		refreshCount()
 		local f = chips[name].Frame
-		FX.pop(f, on and 0.82 or 0.92, 0.45)
 		FX.ripple(f, pos, Theme.Accent, { Radius = 13, Alpha = 0.8, Time = 0.5 })
 		fire(obj, o)
 	end
@@ -2186,8 +2151,8 @@ function Section:AddChips(o)
 		local hit = hitZone(f, { ZIndex = 3 })
 		chips[name] = { Frame = f, Stroke = st }
 		onHover(hit,
-			function() FX.scaleTo(f, 1.06, 0.16, Enum.EasingStyle.Back) end,
-			function() FX.scaleTo(f, 1, 0.2) end)
+				function() if not sel[name] then tween(f, { BackgroundColor3 = Theme.Stroke }, 0.12) end end,
+				function() paintChip(chips[name], sel[name] and true or false, false) end)
 		onClick(hit, function(pos) flip(name, pos) end)
 	end
 
@@ -2234,9 +2199,8 @@ function Section:AddStepper(o)
 		local l = new("TextLabel", {
 			Text = glyph, Font = FONT_BOLD, TextSize = 16, Fg = "Text", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = b,
 		})
-		local sc = new("UIScale", { Parent = b })
 		local hit = hitZone(b, { ZIndex = 3 })
-		return b, l, sc, hit
+		return b, l, nil, hit
 	end
 	local minus, minusLbl, minusSc, minusHit = mini(2, "-")
 	local plus, plusLbl, plusSc, plusHit = mini(70, "+")
@@ -2273,7 +2237,7 @@ function Section:AddStepper(o)
 		st = pressTrack(hit, function(pos)
 			token += 1
 			local my = token
-			tween(sc, { Scale = 0.86 }, 0.06)
+				tween(btn, { BackgroundColor3 = Theme.Accent:Lerp(Theme.Element, 0.7) }, 0.06)
 			FX.ripple(btn, pos, Theme.Accent, { Radius = 6, Alpha = 0.75, Time = 0.4 })
 			obj:Set(obj.Value + dir * step)
 			task.spawn(function()
@@ -2287,7 +2251,7 @@ function Section:AddStepper(o)
 			end)
 		end, function()
 			token += 1
-			tween(sc, { Scale = 1 }, 0.3, Enum.EasingStyle.Back)
+				tween(btn, { BackgroundColor3 = Theme.Element }, 0.2)
 		end)
 		onHover(hit,
 			function() tween(btn, { BackgroundColor3 = Theme.Stroke }, 0.12) end,
@@ -2552,7 +2516,6 @@ function Section:AddColorPicker(o)
 
 	onClick(hit, function(pos)
 		FX.ripple(row, pos, Theme.Accent, { Radius = 8, Alpha = 0.85 })
-		FX.pop(sw, 0.9, 0.35)
 		if isOpen then closePopup() else open() end
 	end)
 
@@ -2679,7 +2642,7 @@ function Tab:AddSection(o)
 		function() tween(hzone, { BackgroundTransparency = 0.6 }, 0.15) end,
 		function() tween(hzone, { BackgroundTransparency = 1 }, 0.2) end)
 
-	local content = new("CanvasGroup", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, LayoutOrder = 2, Parent = card })
+	local content = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, LayoutOrder = 2, ClipsDescendants = true, Parent = card })
 	padding(content, 8, 0, 8, 8)
 	local layout = listLayout(content, 5)
 
@@ -2794,7 +2757,7 @@ end
 
 function Window:_sub(parentTab)
 	if parentTab.SubFrame then return parentTab.SubFrame end
-	local sf = new("CanvasGroup", { Size = UDim2.new(1, 0, 0, 0), Visible = false, LayoutOrder = 2, Parent = parentTab.Holder })
+	local sf = new("Frame", { Size = UDim2.new(1, 0, 0, 0), Visible = false, LayoutOrder = 2, ClipsDescendants = true, Parent = parentTab.Holder })
 	listLayout(sf, 3)
 	padding(sf, 14, 3, 0, 0)
 	parentTab.SubFrame = sf
@@ -2931,7 +2894,6 @@ function Window:SelectTab(tab, instant)
 		paintTab(old, false)
 		local pg = old.Page
 		tween(pg, { GroupTransparency = 1 }, 0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-		tween(old.PageScale, { Scale = 0.985 }, 0.16)
 		task.delay(0.17, function()
 			if not old.Active then
 				pg.Visible = false
@@ -2951,9 +2913,8 @@ function Window:SelectTab(tab, instant)
 	else
 		pg.GroupTransparency = 1
 		pg.Position = PAGE_REST
-		tab.PageScale.Scale = 0.985
+		pg.Position = UDim2.new(0.5, 0, 0.5, 10)
 		tween(pg, { GroupTransparency = 0, Position = PAGE_REST }, 0.32, Enum.EasingStyle.Quint)
-		tween(tab.PageScale, { Scale = 1 }, 0.4, Enum.EasingStyle.Back)
 		if tab.IconTile then FX.pop(tab.IconTile, 1.3, 0.5) end
 		tab.Label.Position = UDim2.fromOffset(tab.LabelX + 6, 0)
 		tween(tab.Label, { Position = UDim2.fromOffset(tab.LabelX, 0) }, 0.45, Enum.EasingStyle.Back)
@@ -3415,7 +3376,7 @@ function Window:SetMaximized(state)
 		self.Body.Visible = true
 		tween(self.Main, { Size = UDim2.fromOffset(BASE_W, BASE_H) }, 0.35)
 	end
-	tween(ScaleObj, { Scale = state and maxScale() or fitScale() }, 0.45, Enum.EasingStyle.Back)
+	tween(ScaleObj, { Scale = state and maxScale() or fitScale() }, 0.32, Enum.EasingStyle.Quint)
 	tween(self.Main, { Position = UDim2.fromScale(0.5, 0.5) }, 0.4)
 end
 
@@ -3446,13 +3407,12 @@ function Window:Toggle(state)
 	if state then
 		main.Visible = true
 		main.Position = lowered
-		ScaleObj.Scale = target * 0.86
+			ScaleObj.Scale = target
 		canvas.GroupTransparency = 1
 		if rim then rim.Transparency = 1 end
 		if shadow then shadow:Set(false) end
 		if ctrls then ctrls.Visible = false end
 		tween(main, { Position = rest }, 0.5, Enum.EasingStyle.Quint)
-		tween(ScaleObj, { Scale = target }, 0.45, Enum.EasingStyle.Back)
 		tween(canvas, { GroupTransparency = 0 }, 0.26, Enum.EasingStyle.Quad)
 		if rim then tween(rim, { Transparency = 0 }, 0.35, Enum.EasingStyle.Quad) end
 		if shadow then shadow:Fade(true, 0.4) end
@@ -3465,7 +3425,6 @@ function Window:Toggle(state)
 	else
 		if ctrls then ctrls.Visible = false end
 		tween(main, { Position = lowered }, 0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-		tween(ScaleObj, { Scale = target * 0.86 }, 0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 		tween(canvas, { GroupTransparency = 1 }, 0.2, Enum.EasingStyle.Quad)
 		if rim then tween(rim, { Transparency = 1 }, 0.2, Enum.EasingStyle.Quad) end
 		if shadow then shadow:Fade(false, 0.2) end
@@ -3524,7 +3483,7 @@ function Window:CreateSettingsTab(opts)
 	mo:AddToggle({ Name = "3D Tilt", Icon = "grid", Default = true, Flag = "UI_Tilt", Callback = function(v) Library.Motion.Tilt = v end })
 	mo:AddToggle({ Name = "Idle Wave", Icon = "pulse", Default = true, Flag = "UI_Wave", Callback = function(v) Library.Motion.Wave = v end })
 	mo:AddToggle({ Name = "Depth Layers", Icon = "columns", Default = true, Flag = "UI_Depth", Callback = function(v) Library.Motion.Depth = v end })
-	mo:AddSlider({ Name = "Motion Strength", Icon = "slider", Min = 0.2, Max = 2, Increment = 0.05, Default = 1, Suffix = "x", Flag = "UI_MotionStrength", Callback = function(v) Library.Motion.Strength = v end })
+	mo:AddSlider({ Name = "Motion Strength", Icon = "slider", Min = 0.2, Max = 2.5, Increment = 0.05, Default = 1, Suffix = "x", Flag = "UI_MotionStrength", Callback = function(v) Library.Motion.Strength = v end })
 	if UserInputService.GyroscopeEnabled then
 		mo:AddToggle({ Name = "Gyroscope", Icon = "signal", Default = true, Flag = "UI_Gyro", Callback = function(v) Library.Motion.Gyro = v end })
 		mo:AddToggle({ Name = "Invert Gyroscope", Icon = "refresh", Default = false, Flag = "UI_GyroInvert", Callback = function(v) Library.Motion.InvertGyro = v end })
@@ -3585,7 +3544,7 @@ function Window:CreateDashboard(opts)
 
 	local GOOD, WARN, BAD = Color3.fromRGB(74, 190, 120), Color3.fromRGB(235, 170, 60), Color3.fromRGB(226, 72, 80)
 	local TILE_H, GAP, SAMPLES = 46, 6, 36
-	local scales, glows = {}, {}
+	local slides, glows = {}, {}
 	local born = os.clock()
 	local ts = game:GetService("TeleportService")
 
@@ -3605,7 +3564,7 @@ function Window:CreateDashboard(opts)
 		corner(f, 12)
 		stroke(f)
 		gradient(f, 225)
-		scales[#scales + 1] = new("UIScale", { Parent = f })
+		slides[#slides + 1] = { f, f.Position }
 		return f
 	end
 
@@ -3628,10 +3587,8 @@ function Window:CreateDashboard(opts)
 	end
 
 	local function press(gui)
-		local sc = gui:FindFirstChild("PressScale")
-		if not sc then sc = new("UIScale", { Name = "PressScale", Parent = gui }) end
-		sc.Scale = 0.95
-		tween(sc, { Scale = 1 }, 0.35, Enum.EasingStyle.Back)
+		local rest = gui.BackgroundColor3
+		flashObj(gui, "BackgroundColor3", rest:Lerp(Theme.Accent, 0.2), function() return rest end, 0.05, 0.3)
 	end
 
 	local function clickable(gui, fn, key, popObj)
@@ -3968,7 +3925,6 @@ function Window:CreateDashboard(opts)
 		local hz = hitZone(box, { ZIndex = 6 })
 		onClick(hz, function()
 			mode = i
-			FX.pop(box, 1.25, 0.4)
 			paintPills()
 			D.render()
 		end, true)
@@ -4168,9 +4124,9 @@ function Window:CreateDashboard(opts)
 		if tab.Active and win.Visible then
 			accSec += dt
 			accFr += dt
-			ringG.Rotation = (ringG.Rotation + dt * 110) % 360
 			accRot += dt
-			if accRot >= 1 / 30 then
+			if accRot >= (IS_TOUCH and 1 / 20 or 1 / 30) then
+				ringG.Rotation = (ringG.Rotation + accRot * 110) % 360
 				for _, g in ipairs(glows) do g.Rotation = (g.Rotation + accRot * 14) % 360 end
 				accRot = 0
 			end
@@ -4187,10 +4143,11 @@ function Window:CreateDashboard(opts)
 	end)
 
 	function D.intro()
-		for i, sc in ipairs(scales) do
-			sc.Scale = 0.93
+		for i, sl in ipairs(slides) do
+			local f, base = sl[1], sl[2]
+			f.Position = base + UDim2.fromOffset(0, 12)
 			task.delay((i - 1) * 0.04, function()
-				if sc.Parent then tween(sc, { Scale = 1 }, 0.45, Enum.EasingStyle.Back) end
+				if f.Parent then tween(f, { Position = base }, 0.4, Enum.EasingStyle.Quint) end
 			end)
 		end
 	end
@@ -4250,12 +4207,11 @@ function Library:Confirm(o)
 		Name = "Confirm", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 26),
 		Size = UDim2.fromOffset(W, H), ZIndex = 101, Parent = Gui,
 	})
-	local rootScale = new("UIScale", { Scale = s * 0.88, Parent = root })
+	local rootScale = new("UIScale", { Scale = s, Parent = root })
 	local tilt = new("Frame", {
 		Name = "Tilt", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(1, 1), Parent = root,
 	})
-	local tiltScale = new("UIScale", { Parent = tilt })
 
 	local shadow = makeShadow(tilt, 16, { Steps = 6, Step = 5, Alpha = 0.055, Offset = 6 })
 	shadow:Set(false)
@@ -4371,30 +4327,13 @@ function Library:Confirm(o)
 	corner(okb, 11)
 	gradient(okb, 200)
 	local function okRest() return danger and RED or Theme.Accent end
-	local cancelSc, okSc = fxScale(cancel), fxScale(okb)
 
 	onHover(cancel,
-		function()
-			tween(cancel, { BackgroundColor3 = Theme.Hover }, 0.15)
-			tween(cancelSc, { Scale = 1.03 }, 0.15, Enum.EasingStyle.Quad)
-		end,
-		function()
-			tween(cancel, { BackgroundColor3 = Theme.Element }, 0.2)
-			tween(cancelSc, { Scale = 1 }, 0.2)
-		end)
+		function() tween(cancel, { BackgroundColor3 = Theme.Hover }, 0.15) end,
+		function() tween(cancel, { BackgroundColor3 = Theme.Element }, 0.2) end)
 	onHover(okb,
-		function()
-			tween(okb, { BackgroundColor3 = okRest():Lerp(WHITE, 0.14) }, 0.15)
-			tween(okSc, { Scale = 1.03 }, 0.15, Enum.EasingStyle.Quad)
-		end,
-		function()
-			tween(okb, { BackgroundColor3 = okRest() }, 0.2)
-			tween(okSc, { Scale = 1 }, 0.2)
-		end)
-	cancel.MouseButton1Down:Connect(function() tween(cancelSc, { Scale = 0.94 }, 0.06) end)
-	cancel.MouseButton1Up:Connect(function() tween(cancelSc, { Scale = 1 }, 0.25, Enum.EasingStyle.Back) end)
-	okb.MouseButton1Down:Connect(function() tween(okSc, { Scale = 0.94 }, 0.06) end)
-	okb.MouseButton1Up:Connect(function() tween(okSc, { Scale = 1 }, 0.25, Enum.EasingStyle.Back) end)
+		function() tween(okb, { BackgroundColor3 = okRest():Lerp(WHITE, 0.14) }, 0.15) end,
+		function() tween(okb, { BackgroundColor3 = okRest() }, 0.2) end)
 
 	local closed, escCon, endCon, loopCon = false, nil, nil, nil
 	local touch, mouseDown = nil, false
@@ -4414,7 +4353,7 @@ function Library:Confirm(o)
 		pcall(function() ringT2:Cancel() end)
 		tween(blocker, { BackgroundTransparency = 1 }, 0.16)
 		tween(card, { GroupTransparency = 1 }, 0.14)
-		tween(rootScale, { Scale = s * 0.92 }, 0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		tween(root, { Position = UDim2.new(0.5, 0, 0.5, 14) }, 0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 		shadow:Fade(false, 0.14)
 		task.delay(0.18, function()
 			if loopCon then loopCon:Disconnect() end
@@ -4442,9 +4381,9 @@ function Library:Confirm(o)
 		end
 		local ty = i.UserInputType
 		if ty == Enum.UserInputType.Touch then
-			if inside(i.Position) then touch = i end
+			if inside(toScreen(i.Position)) then touch = i end
 		elseif ty == Enum.UserInputType.MouseButton1 then
-			if inside(i.Position) then mouseDown = true end
+			if inside(toScreen(i.Position)) then mouseDown = true end
 		end
 	end)
 	endCon = UserInputService.InputEnded:Connect(function(i)
@@ -4507,7 +4446,8 @@ function Library:Confirm(o)
 		local tx, ty, near = 0, 0, 0
 		if as.X > 0 and as.Y > 0 then
 			if touch then
-				tx, ty = aim(touch.Position.X, touch.Position.Y, cx, cy, as)
+				local tp = toScreen(touch.Position)
+				tx, ty = aim(tp.X, tp.Y, cx, cy, as)
 				near = 1
 			elseif not IS_TOUCH then
 				local m = UserInputService:GetMouseLocation()
@@ -4529,12 +4469,12 @@ function Library:Confirm(o)
 		local TY = py.x + wy * 0.3 * amp
 		local lf, pr = lift.x, press.x
 
-		local tpx, tpy = TX * 4, TY * 3 + bob * 1.6 * amp
-		local c1, c2 = chg("tpx", tpx, 0.01), chg("tpy", tpy, 0.01)
+		local tpx, tpy = snap(px.x * 4, 0.5), snap(py.x * 3 + pr * 1.5, 0.5)
+		local c1, c2 = chg("tpx", tpx, 0.2), chg("tpy", tpy, 0.2)
 		if c1 or c2 then tilt.Position = UDim2.new(0.5, tpx, 0.5, tpy) end
-		if chg("trot", TX * 1.2, 0.002) then tilt.Rotation = TX * 1.2 end
-		local tsc = 1 + lf * 0.012 - pr * 0.014
-		if chg("tsc", tsc, 0.0003) then tiltScale.Scale = tsc end
+		local rot = px.x * 1.2
+		rot = math.abs(rot) < 0.03 and 0 or snap(rot, 0.04)
+		if chg("trot", rot, 0.02) then tilt.Rotation = rot end
 
 		local sx, sy = -TX * 10, 6 + lf * 4 - TY * 10 - bob * 1.2
 		local s1, s2 = chg("shx", sx, 0.02), chg("shy", sy, 0.02)
@@ -4561,17 +4501,16 @@ function Library:Confirm(o)
 		local rt = 1 - math.clamp(0.12 + mag * 0.6, 0, 1) * vis
 		if chg("rimt", rt, 0.004) then rimStroke.Transparency = rt end
 
-		local IX, IY = px.x, py.x
-		local i1, i2 = chg("tlx", IX, 0.015), chg("tly", IY, 0.015)
+		local IX, IY = snap(px.x * 3, 0.5), snap(py.x * 3, 0.5)
+		local i1, i2 = chg("tlx", IX, 0.2), chg("tly", IY, 0.2)
 		if i1 or i2 then
-			tile.Position = UDim2.fromOffset(20 + IX * 3, 18 + IY * 3)
-			titleBlock.Position = UDim2.fromOffset(64 + IX * 1.5, IY * 1.5)
+			tile.Position = UDim2.fromOffset(20 + IX, 18 + IY)
+			titleBlock.Position = UDim2.fromOffset(64 + snap(IX * 0.5, 0.5), snap(IY * 0.5, 0.5))
 		end
 	end)
 
 	tween(blocker, { BackgroundTransparency = 0.5 }, 0.25)
 	tween(root, { Position = UDim2.fromScale(0.5, 0.5) }, 0.5, Enum.EasingStyle.Quint)
-	tween(rootScale, { Scale = s }, 0.45, Enum.EasingStyle.Back)
 	tween(card, { GroupTransparency = 0 }, 0.22)
 	tween(outStroke, { Transparency = 0 }, 0.25)
 	shadow:Fade(true, 0.4)
@@ -4579,14 +4518,6 @@ function Library:Confirm(o)
 	task.delay(0.12, function()
 		if closed or not tile.Parent then return end
 		FX.pop(tile, 0.3, 0.55)
-	end)
-	task.delay(0.2, function()
-		if closed or not cancel.Parent then return end
-		FX.pop(cancel, 0.85, 0.5)
-	end)
-	task.delay(0.26, function()
-		if closed or not okb.Parent then return end
-		FX.pop(okb, 0.85, 0.5)
 	end)
 	task.delay(0.22, function()
 		if closed or not tile.Parent then return end
@@ -4633,7 +4564,7 @@ function Library:CreateWindow(opts)
 		Name = "Main", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromOffset(BASE_W, BASE_H), Parent = Gui,
 	})
-	ScaleObj = new("UIScale", { Scale = fitScale() * 0.85, Parent = Main })
+	ScaleObj = new("UIScale", { Scale = fitScale(), Parent = Main })
 	MainFrame = Main
 	self.Main = Main
 
@@ -4811,8 +4742,8 @@ function Library:CreateWindow(opts)
 		self:_queueFilter(sbox.Text)
 	end)
 
-	self.TabClip = new("CanvasGroup", {
-		Name = "TabClip", Position = UDim2.fromOffset(0, TABCLIP_Y), Size = UDim2.new(1, 0, 1, -(TABCLIP_Y + 60)), Parent = Sidebar,
+	self.TabClip = new("Frame", {
+		Name = "TabClip", Position = UDim2.fromOffset(0, TABCLIP_Y), Size = UDim2.new(1, 0, 1, -(TABCLIP_Y + 60)), ClipsDescendants = true, Parent = Sidebar,
 	})
 	self.TabList = new("ScrollingFrame", {
 		Size = UDim2.fromScale(1, 1), CanvasSize = UDim2.new(),
@@ -4953,9 +4884,21 @@ function Library:CreateWindow(opts)
 
 	local cam = workspace.CurrentCamera
 	if cam then
-		connect(cam:GetPropertyChangedSignal("ViewportSize"), function()
-			if self.Visible then ScaleObj.Scale = self.Maximized and maxScale() or fitScale() end
-		end)
+		local rtok = 0
+		local function rescale()
+			rtok += 1
+			local my = rtok
+			task.delay(0.35, function()
+				if my ~= rtok or not Main.Parent or not self.Visible then return end
+				if UserInputService:GetFocusedTextBox() then return end
+				local goal = self.Maximized and maxScale() or fitScale()
+				if math.abs(ScaleObj.Scale - goal) > 0.004 then
+					tween(ScaleObj, { Scale = goal }, 0.25, Enum.EasingStyle.Quint)
+				end
+			end)
+		end
+		connect(cam:GetPropertyChangedSignal("ViewportSize"), rescale)
+		connect(UserInputService.TextBoxFocusReleased, rescale)
 	end
 
 	local acc, frames = 0, 0
@@ -4973,7 +4916,8 @@ function Library:CreateWindow(opts)
 
 	self:_init3D(headerCrown)
 
-	tween(ScaleObj, { Scale = fitScale() }, 0.5, Enum.EasingStyle.Back)
+	Canvas.GroupTransparency = 1
+	tween(Canvas, { GroupTransparency = 0 }, 0.3, Enum.EasingStyle.Quad)
 
 	table.insert(Library.Windows, self)
 	return self
@@ -4990,15 +4934,24 @@ do
 		Motion[key] = value
 	end
 
-	local function newSpring() return { x = 0, v = 0 } end
-	local function stepSpring(s, target, dt, k, d)
+	local KP = NumberSequenceKeypoint.new
+	local PLATES = IS_TOUCH and 2 or 3
+	local IDLE_STEP = IS_TOUCH and 1 / 24 or 1 / 30
+
+	local function spring(s, target, dt, k, d)
 		s.v += ((target - s.x) * k - s.v * d) * dt
 		s.x += s.v * dt
 	end
-	local function sat(x) return math.clamp(x, -1, 1) end
 
-	local PLATES = 4
-	local KP = NumberSequenceKeypoint.new
+	local function sat(x)
+		return math.clamp(x, -1, 1)
+	end
+
+	local function aim(x, y, cx, cy, as)
+		local dx, dy = (x - cx) / (as.X * 0.6), (y - cy) / (as.Y * 0.6)
+		local fade = 1 - math.clamp((math.max(math.abs(dx), math.abs(dy)) - 1) / 1.2, 0, 1)
+		return sat(dx) * fade, sat(dy) * fade
+	end
 
 	function Window:_init3D(headerCrown)
 		local main = self.Main
@@ -5010,7 +4963,6 @@ do
 			Name = "Tilt", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
 			Size = UDim2.fromScale(1, 1), Parent = main,
 		})
-		local tiltScale = new("UIScale", { Name = "TiltScale", Parent = tilt })
 
 		local shadowHolder = self.Shadow and self.Shadow.Holder
 		if shadowHolder then shadowHolder.Parent = tilt end
@@ -5019,12 +4971,12 @@ do
 		for k = 1, PLATES do
 			local f = new("Frame", {
 				Name = "Plate" .. k, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-				Size = UDim2.new(1, -k * 3.5, 1, -k * 3.5), Bg = "Sidebar", BackgroundTransparency = 1, ZIndex = 0, Parent = tilt,
+				Size = UDim2.new(1, -k * 2, 1, -k * 2), Bg = "Card", BackgroundTransparency = 1, ZIndex = 0, Parent = tilt,
 			})
 			corner(f, 12)
-			local st = stroke(f, "Stroke", 1)
-			st.Transparency = 1
-			plates[k] = { Frame = f, Stroke = st, Base = 0.4 + k * 0.1 }
+			local pst = stroke(f, "Stroke", 1)
+			pst.Transparency = 1
+			plates[k] = { Frame = f, Stroke = pst, Base = 0.2 + k * 0.2 }
 		end
 
 		self.Canvas.Parent = tilt
@@ -5053,43 +5005,38 @@ do
 			})
 		end
 
-		local px, py, lift, press = newSpring(), newSpring(), newSpring(), newSpring()
-		local show, calm = 1, 1
-		local t0 = os.clock()
-		local touch, mouseDown, lastC, baseline = nil, false, nil, nil
+		local px, py, lift, press = { x = 0, v = 0 }, { x = 0, v = 0 }, { x = 0, v = 0 }, { x = 0, v = 0 }
+		local st = {
+			show = 1, calm = 1, acc = 0, parked = false, cfg = -1, t0 = os.clock(),
+			touch = nil, down = false, lcx = nil, lcy = nil, base = nil,
+		}
 
-		local function inside(pos)
+		local function inside(p)
 			local ap, as = main.AbsolutePosition, main.AbsoluteSize
-			return pos.X >= ap.X and pos.X <= ap.X + as.X and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y
+			return p.X >= ap.X and p.X <= ap.X + as.X and p.Y >= ap.Y and p.Y <= ap.Y + as.Y
 		end
 
 		connect(UserInputService.InputBegan, function(i)
 			if not self.FxShow then return end
 			local ty = i.UserInputType
 			if ty == Enum.UserInputType.Touch then
-				if inside(i.Position) then touch = i end
+				if inside(toScreen(i.Position)) then st.touch = i end
 			elseif ty == Enum.UserInputType.MouseButton1 then
-				if inside(i.Position) then mouseDown = true end
+				if inside(toScreen(i.Position)) then st.down = true end
 			end
 		end)
 		connect(UserInputService.InputEnded, function(i)
-			if i == touch then touch = nil end
-			if i.UserInputType == Enum.UserInputType.MouseButton1 then mouseDown = false end
+			if i == st.touch then st.touch = nil end
+			if i.UserInputType == Enum.UserInputType.MouseButton1 then st.down = false end
 		end)
-
-		local function aim(x, y, cx, cy, as)
-			local dx, dy = (x - cx) / (as.X * 0.6), (y - cy) / (as.Y * 0.6)
-			local fade = 1 - math.clamp((math.max(math.abs(dx), math.abs(dy)) - 1.4) / 2, 0, 1)
-			return sat(dx) * fade, sat(dy) * fade
-		end
 
 		local function gyro(dt)
 			if not (Motion.Gyro and UserInputService.GyroscopeEnabled) then return 0, 0 end
 			local ok, _, cf = pcall(UserInputService.GetDeviceRotation, UserInputService)
 			if not ok or typeof(cf) ~= "CFrame" then return 0, 0 end
-			baseline = baseline or cf
-			baseline = baseline:Lerp(cf, math.min(1, dt * 0.6))
-			local rx, ry = (baseline:Inverse() * cf):ToEulerAnglesXYZ()
+			st.base = st.base or cf
+			st.base = st.base:Lerp(cf, math.min(1, dt * 0.6))
+			local rx, ry = (st.base:Inverse() * cf):ToEulerAnglesXYZ()
 			local sign = Motion.InvertGyro and -1 or 1
 			return sat(ry / 0.3) * sign, sat(-rx / 0.3) * sign
 		end
@@ -5103,124 +5050,158 @@ do
 			end
 			return false
 		end
-		local sdt = 1 / 60
 
-		connect(RunService.RenderStepped, function(dt)
-			dt = math.min(dt, 1 / 20)
-			sdt += (dt - sdt) * 0.15
-			dt = sdt
-			show += ((self.FxShow and 1 or 0) - show) * math.min(1, dt * 12)
-			if not main.Visible or (show < 0.01 and not self.FxShow) then
-				lastC = nil
+		connect(RunService.RenderStepped, function(rawDt)
+			local goal = self.FxShow and 1 or 0
+			if not main.Visible or (goal == 0 and st.show < 0.01) then
+				st.lcx = nil
 				return
 			end
+			local touch = st.touch
 			if touch and (touch.UserInputState == Enum.UserInputState.End or touch.UserInputState == Enum.UserInputState.Cancel) then
+				st.touch = nil
 				touch = nil
 			end
 
 			local S = Motion.Strength
-			local t = os.clock() - t0
-			local w = Motion.Wave and 1 or 0
-			local amp = S * (IS_TOUCH and 1.3 or 1)
-
-			local typing = UserInputService:GetFocusedTextBox() ~= nil
-			local still = (SliderLock.Active or Library.OpenPopup or Library._confirm or typing) and 0 or 1
-			calm += (still - calm) * math.min(1, dt * 9)
+			local wave = Motion.Wave and 1 or 0
+			local cfg = (Motion.Depth and 1 or 0) + (Motion.Tilt and 2 or 0) + Library.Transparency * 7 + S * 13
+			if cfg ~= st.cfg then
+				st.cfg = cfg
+				st.parked = false
+			end
 
 			local ap, as = main.AbsolutePosition, main.AbsoluteSize
-			local cx, cy = ap.X + as.X / 2, ap.Y + as.Y / 2
+			local cx, cy = ap.X + as.X * 0.5, ap.Y + as.Y * 0.5
+			local typing = UserInputService:GetFocusedTextBox() ~= nil
+			local still = (SliderLock.Active or Library.OpenPopup or Library._confirm or typing) and 0 or 1
 
 			local tx, ty, near = 0, 0, 0
-			if Motion.Tilt and as.X > 0 and as.Y > 0 then
+			if still == 1 and Motion.Tilt and as.X > 0 and as.Y > 0 then
 				if touch then
-					tx, ty = aim(touch.Position.X, touch.Position.Y, cx, cy, as)
+					local p = toScreen(touch.Position)
+					tx, ty = aim(p.X, p.Y, cx, cy, as)
 					near = 1
 				elseif not IS_TOUCH then
 					local m = UserInputService:GetMouseLocation()
 					tx, ty = aim(m.X, m.Y, cx, cy, as)
-					near = inside(m) and 1 or 0
+					if m.X >= ap.X and m.X <= ap.X + as.X and m.Y >= ap.Y and m.Y <= ap.Y + as.Y then near = 1 end
 				else
-					tx, ty = gyro(dt)
+					tx, ty = gyro(rawDt)
 				end
 			end
 
 			local swx, swy = 0, 0
-			if lastC and Motion.Tilt then
-				local idt = 1 / math.max(dt, 1e-3)
-				swx = sat(-(cx - lastC.X) * idt / 1800)
-				swy = sat(-(cy - lastC.Y) * idt / 1800)
+			if st.lcx and still == 1 and Motion.Tilt and rawDt > 0 then
+				local k = 1 / (math.max(rawDt, 1e-3) * 1800)
+				swx = sat(-(cx - st.lcx) * k)
+				swy = sat(-(cy - st.lcy) * k)
 			end
-			lastC = Vector2.new(cx, cy)
+			st.lcx, st.lcy = cx, cy
 
-			stepSpring(px, sat(tx + swx * 0.9), dt, 140, 16)
-			stepSpring(py, sat(ty + swy * 0.9), dt, 140, 16)
-			stepSpring(lift, near, dt, 120, 14)
-			stepSpring(press, (mouseDown or touch) and 1 or 0, dt, 220, 16)
+			local pressing = (st.down or touch ~= nil) and 1 or 0
+			local moving = math.abs(px.x) + math.abs(py.x) + math.abs(px.v) + math.abs(py.v) + math.abs(lift.x) + math.abs(press.x) > 0.004
+			local active = near > 0 or pressing > 0 or moving
+				or math.abs(tx) + math.abs(ty) > 0.01 or math.abs(swx) + math.abs(swy) > 0.02
+				or math.abs(goal - st.show) > 0.003 or math.abs(st.calm - still) > 0.01
 
-			local wx = (math.sin(t * 0.9) + 0.45 * math.sin(t * 1.9 + 1.3)) * 0.7 * w
-			local wy = (math.cos(t * 0.75 + 0.6) + 0.45 * math.sin(t * 1.5 + 2.1)) * 0.7 * w
-			local bob = (math.sin(t * 1.15) + 0.35 * math.sin(t * 2.3 + 0.8)) * w
+			st.acc += rawDt
+			if not active then
+				if wave == 0 then
+					if st.parked then
+						st.acc = 0
+						return
+					end
+				elseif st.acc < IDLE_STEP then
+					return
+				end
+			end
+			local dt = math.min(st.acc, 1 / 20)
+			st.acc = 0
 
-			local TX = (px.x * S + wx * 0.34 * amp) * calm
-			local TY = (py.x * S + wy * 0.34 * amp) * calm
-			local lf = lift.x * calm
-			local pr = press.x * calm
+			local n = dt > 0.03 and 2 or 1
+			local h = dt / n
+			local gx, gy = sat(tx + swx * 0.9), sat(ty + swy * 0.9)
+			for _ = 1, n do
+				spring(px, gx, h, 140, 16)
+				spring(py, gy, h, 140, 16)
+				spring(lift, near, h, 120, 14)
+				spring(press, pressing, h, 220, 16)
+			end
+			if gx == 0 and math.abs(px.x) < 0.0015 and math.abs(px.v) < 0.003 then px.x, px.v = 0, 0 end
+			if gy == 0 and math.abs(py.x) < 0.0015 and math.abs(py.v) < 0.003 then py.x, py.v = 0, 0 end
+			if near == 0 and math.abs(lift.x) < 0.0015 and math.abs(lift.v) < 0.003 then lift.x, lift.v = 0, 0 end
+			if pressing == 0 and math.abs(press.x) < 0.0015 and math.abs(press.v) < 0.003 then press.x, press.v = 0, 0 end
 
-			local tpx, tpy = TX * 3.2, TY * 2.6 + bob * 2.4 * amp * calm
-			local c1, c2 = chg("tpx", tpx, 0.01), chg("tpy", tpy, 0.01)
+			st.show += (goal - st.show) * math.min(1, dt * 12)
+			st.calm += (still - st.calm) * math.min(1, dt * 9)
+			local show, calm = st.show, st.calm
+			local t = os.clock() - st.t0
+
+			local amp = S * (IS_TOUCH and 0.8 or 1)
+			local RX, RY = px.x * amp * calm, py.x * amp * calm
+			local lf, pr = lift.x * calm, press.x * calm
+
+			local tpx, tpy = snap(RX * 4, 0.5), snap(RY * 3 + pr * 1.5, 0.5)
+			local c1, c2 = chg("tpx", tpx, 0.2), chg("tpy", tpy, 0.2)
 			if c1 or c2 then tilt.Position = UDim2.new(0.5, tpx, 0.5, tpy) end
-			if chg("trot", TX * 0.9, 0.002) then tilt.Rotation = TX * 0.9 end
-			local tsc = 1 + (lf * 0.010 - pr * 0.010)
-			if chg("tsc", tsc, 0.0003) then tiltScale.Scale = tsc end
+			local rot = RX * 1.15
+			rot = math.abs(rot) < 0.03 and 0 or snap(rot, 0.04)
+			if chg("trot", rot, 0.02) then tilt.Rotation = rot end
+
+			local wx = (math.sin(t * 0.9) + 0.45 * math.sin(t * 1.9 + 1.3)) * 0.7 * wave
+			local wy = (math.cos(t * 0.75 + 0.6) + 0.45 * math.sin(t * 1.5 + 2.1)) * 0.7 * wave
+			local bob = (math.sin(t * 1.15) + 0.35 * math.sin(t * 2.3 + 0.8)) * wave
+			local qx, qy = RX + wx * 0.3 * S * calm, RY + wy * 0.3 * S * calm
 
 			if shadowHolder then
-				local sx, sy = -TX * 9 * S, 5 + lf * 4 - TY * 9 * S - bob * 1.6 * calm
-				local s1, s2 = chg("shx", sx, 0.02), chg("shy", sy, 0.02)
+				local sx, sy = -qx * 9, 5 + lf * 4 - pr * 2 - qy * 9 - bob * 1.6 * calm
+				local s1, s2 = chg("shx", sx, 0.05), chg("shy", sy, 0.05)
 				if s1 or s2 then shadowHolder.Position = UDim2.new(0.5, sx, 0.5, sy) end
 			end
 
 			local a = show * (Motion.Depth and 1 or 0) * (1 - math.clamp((Library.Transparency - 0.1) * 1.4, 0, 0.9))
-			local qx, qy = TX + wx * 0.2 * w * calm, TY + wy * 0.2 * w * calm
 			local aChanged = chg("plA", a, 0.004)
 			for k, pl in ipairs(plates) do
-				local lag = math.sin(t * 1.3 - k * 0.8) * 0.45 * k * w * S * calm
-				local plx, ply = -qx * k * 1.5 * S + lag, -qy * k * 1.5 * S + k * 0.5
-				local p1, p2 = chg("plx" .. k, plx, 0.02), chg("ply" .. k, ply, 0.02)
+				local plx, ply = snap(-qx * k * 2.4, 0.25), snap(-qy * k * 2.4 + k * 0.5, 0.25)
+				local p1, p2 = chg("plx" .. k, plx, 0.1), chg("ply" .. k, ply, 0.1)
 				if p1 or p2 then pl.Frame.Position = UDim2.new(0.5, plx, 0.5, ply) end
 				if aChanged then
 					pl.Frame.BackgroundTransparency = 1 - (1 - pl.Base) * a
-					pl.Stroke.Transparency = 1 - 0.55 * a * (1 - (k - 1) * 0.18)
+					pl.Stroke.Transparency = 1 - 0.6 * a * (1 - (k - 1) * 0.2)
 				end
 			end
 
-			local mag = math.min(1, math.sqrt(TX * TX + TY * TY))
 			if glare then
-				local go = math.clamp(TX * 0.55 + TY * 0.2, -0.85, 0.85)
+				local go = math.clamp(qx * 0.55 + qy * 0.2, -0.85, 0.85)
 				if chg("glo", go, 0.004) then glareGrad.Offset = Vector2.new(go, 0) end
 				local gt = 1 - show * (0.55 + 0.45 * math.clamp(lf, 0, 1))
 				if chg("glt", gt, 0.003) then glare.BackgroundTransparency = gt end
-				local rr = math.deg(math.atan2(TY, TX))
+				local rr = math.deg(math.atan2(qy, qx))
 				if chg("rimr", rr, 0.5) then rimGrad.Rotation = rr end
+				local mag = math.min(1, math.sqrt(qx * qx + qy * qy))
 				local rt = 1 - math.clamp(0.12 + mag * 0.6, 0, 1) * show
 				if chg("rimt", rt, 0.004) then rimStroke.Transparency = rt end
 			end
 
-			local IX, IY = px.x * S * calm, py.x * S * calm
+			local IX, IY = RX * 2.4, RY * 2.4
 			if crownTile then
-				local cxp, cyp = 12 + IX * 2.4, IY * 2.4
-				local k1, k2 = chg("crx", cxp, 0.05), chg("cry", cyp, 0.05)
-				if k1 or k2 then crownTile.Position = UDim2.new(0, cxp, 0.5, cyp) end
+				local ix, iy = snap(IX, 0.5), snap(IY, 0.5)
+				local k1, k2 = chg("crx", ix, 0.2), chg("cry", iy, 0.2)
+				if k1 or k2 then crownTile.Position = UDim2.new(0, 12 + ix, 0.5, iy) end
 			end
 			if self.TitleBlock then
-				local txp, typ = TITLE_X + IX * 1.2, IY * 1.2
-				local k1, k2 = chg("ttx", txp, 0.05), chg("tty", typ, 0.05)
-				if k1 or k2 then self.TitleBlock.Position = UDim2.fromOffset(txp, typ) end
+				local ix, iy = snap(IX * 0.5, 0.5), snap(IY * 0.5, 0.5)
+				local k1, k2 = chg("ttx", ix, 0.2), chg("tty", iy, 0.2)
+				if k1 or k2 then self.TitleBlock.Position = UDim2.fromOffset(TITLE_X + ix, iy) end
 			end
 			if self.UserCard then
-				local uxp, uyp = 8 + IX * 1.6, -8 + IY * 1.6
-				local k1, k2 = chg("ucx", uxp, 0.05), chg("ucy", uyp, 0.05)
-				if k1 or k2 then self.UserCard.Position = UDim2.new(0, uxp, 1, uyp) end
+				local ix, iy = snap(IX * 0.67, 0.5), snap(IY * 0.67, 0.5)
+				local k1, k2 = chg("ucx", ix, 0.2), chg("ucy", iy, 0.2)
+				if k1 or k2 then self.UserCard.Position = UDim2.new(0, 8 + ix, 1, -8 + iy) end
 			end
+
+			st.parked = (not active) and wave == 0
 		end)
 	end
 end
