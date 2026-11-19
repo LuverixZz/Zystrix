@@ -2728,9 +2728,9 @@ local function relayoutSub(tab)
 	tab.SubTok = (tab.SubTok or 0) + 1
 	local tok = tab.SubTok
 	if h > 0 then sf.Visible = true end
-	tween(sf, { Size = UDim2.new(1, 0, 0, h) }, 0.28, Enum.EasingStyle.Quint)
+	tween(sf, { Size = UDim2.new(1, 0, 0, h) }, 0.2, Enum.EasingStyle.Quint)
 	if h == 0 then
-		task.delay(0.3, function()
+		task.delay(0.22, function()
 			if tab.SubTok == tok and sf.Parent then sf.Visible = false end
 		end)
 	end
@@ -2739,15 +2739,15 @@ end
 function Library._toggleSub(tab)
 	if #tab.Children == 0 then return end
 	tab.Expanded = not tab.Expanded
-	if tab.Chevron then tween(tab.Chevron, { Rotation = tab.Expanded and 180 or 0 }, 0.4, Enum.EasingStyle.Back) end
+	if tab.Chevron then tween(tab.Chevron, { Rotation = tab.Expanded and 180 or 0 }, 0.2, Enum.EasingStyle.Quint) end
 	relayoutSub(tab)
 end
 
 local function paintTab(tab, instant)
-	local t = instant and 0 or 0.2
+	local t = instant and 0 or 0.1
 	local on = tab.Active
 	tween(tab.Button, { BackgroundTransparency = on and 0 or 1 }, t)
-	tween(tab.Bar, { Size = UDim2.fromOffset(3, on and 16 or 0) }, t, Enum.EasingStyle.Back)
+	tween(tab.Bar, { Size = UDim2.fromOffset(3, on and 16 or 0) }, t, Enum.EasingStyle.Quint)
 	tween(tab.Label, { TextColor3 = on and Theme.Text or Theme.SubText }, t)
 	if tab.Icon then
 		tween(tab.IconTile, { BackgroundColor3 = on and Theme.Accent or Theme.Hover }, t)
@@ -2820,13 +2820,25 @@ function Window:AddTab(opts)
 
 	onHover(btn,
 		function()
-			if not tab.Active then tween(btn, { BackgroundTransparency = 0.55 }, 0.15) end
-			tween(tab.Label, { Position = UDim2.fromOffset(lblX + 3, 0) }, 0.18)
+			if not tab.Active then tween(btn, { BackgroundTransparency = 0.55 }, 0.1) end
 		end,
 		function()
-			if not tab.Active then tween(btn, { BackgroundTransparency = 1 }, 0.2) end
-			tween(tab.Label, { Position = UDim2.fromOffset(lblX, 0) }, 0.2)
+			if not tab.Active then tween(btn, { BackgroundTransparency = 1 }, 0.12) end
 		end)
+	connect(btn.InputBegan, function(i)
+		if i.UserInputType ~= Enum.UserInputType.Touch then return end
+		if not tab.Active then tween(btn, { BackgroundTransparency = 0.4 }, 0.04) end
+		local con
+		con = i.Changed:Connect(function()
+			local stt = i.UserInputState
+			if stt == Enum.UserInputState.End or stt == Enum.UserInputState.Cancel then
+				con:Disconnect()
+				task.delay(0.05, function()
+					if btn.Parent and not tab.Active then tween(btn, { BackgroundTransparency = 1 }, 0.12) end
+				end)
+			end
+		end)
+	end)
 
 	if opts.NoPage ~= true then
 		local holder = new("CanvasGroup", {
@@ -2893,8 +2905,8 @@ function Window:SelectTab(tab, instant)
 		old.Active = false
 		paintTab(old, false)
 		local pg = old.Page
-		tween(pg, { GroupTransparency = 1 }, 0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-		task.delay(0.17, function()
+		tween(pg, { GroupTransparency = 1 }, 0.09, Enum.EasingStyle.Linear)
+		task.delay(0.1, function()
 			if not old.Active then
 				pg.Visible = false
 				pg.Position = PAGE_REST
@@ -2911,13 +2923,10 @@ function Window:SelectTab(tab, instant)
 		pg.Position = PAGE_REST
 		tab.PageScale.Scale = 1
 	else
-		pg.GroupTransparency = 1
-		pg.Position = PAGE_REST
-		pg.Position = UDim2.new(0.5, 0, 0.5, 10)
-		tween(pg, { GroupTransparency = 0, Position = PAGE_REST }, 0.32, Enum.EasingStyle.Quint)
-		if tab.IconTile then FX.pop(tab.IconTile, 1.3, 0.5) end
-		tab.Label.Position = UDim2.fromOffset(tab.LabelX + 6, 0)
-		tween(tab.Label, { Position = UDim2.fromOffset(tab.LabelX, 0) }, 0.45, Enum.EasingStyle.Back)
+		pg.GroupTransparency = 0.85
+		pg.Position = UDim2.new(0.5, 0, 0.5, 6)
+		tween(pg, { GroupTransparency = 0, Position = PAGE_REST }, 0.18, Enum.EasingStyle.Quint)
+		if tab.Scroll then tab.Scroll.CanvasPosition = Vector2.new(0, 0) end
 	end
 end
 
@@ -3170,7 +3179,7 @@ function Window:_restorePage()
 	local cur = self.Current
 	if cur and cur.Page then
 		cur.Page.Visible = true
-		tween(cur.Page, { GroupTransparency = 0 }, 0.24, Enum.EasingStyle.Quad)
+		tween(cur.Page, { GroupTransparency = 0 }, 0.14, Enum.EasingStyle.Quad)
 	end
 end
 
@@ -3182,15 +3191,15 @@ function Window:_openSearchPage()
 	local tok = self._srTok
 	local cur = self.Current
 	if cur and cur.Page then
-		tween(cur.Page, { GroupTransparency = 1 }, 0.16, Enum.EasingStyle.Quad)
-		task.delay(0.17, function()
+		tween(cur.Page, { GroupTransparency = 1 }, 0.09, Enum.EasingStyle.Quad)
+		task.delay(0.1, function()
 			if self._srTok == tok and self.SearchOpen and self.Current == cur then cur.Page.Visible = false end
 		end)
 	end
 	closePopup()
 	sp.Visible = true
-	sp.Position = UDim2.new(0.5, 0, 0.5, 12)
-	tween(sp, { GroupTransparency = 0, Position = PAGE_REST }, 0.3, Enum.EasingStyle.Quint)
+	sp.Position = UDim2.new(0.5, 0, 0.5, 6)
+	tween(sp, { GroupTransparency = 0, Position = PAGE_REST }, 0.18, Enum.EasingStyle.Quint)
 end
 
 function Window:_closeSearchPage(restore)
@@ -3199,8 +3208,8 @@ function Window:_closeSearchPage(restore)
 	self.SearchOpen = false
 	self._srTok += 1
 	local tok = self._srTok
-	tween(sp, { GroupTransparency = 1, Position = UDim2.new(0.5, 0, 0.5, 8) }, 0.18, Enum.EasingStyle.Quad)
-	task.delay(0.2, function()
+	tween(sp, { GroupTransparency = 1 }, 0.1, Enum.EasingStyle.Quad)
+	task.delay(0.12, function()
 		if self._srTok == tok and not self.SearchOpen then
 			sp.Visible = false
 			sp.Position = PAGE_REST
@@ -3218,7 +3227,7 @@ function Window:_queueFilter(q)
 		return
 	end
 	self._pendingQ = q
-	task.delay(0.12, function()
+	task.delay(0.07, function()
 		if self._qTok == tok and self._pendingQ ~= nil then
 			local p = self._pendingQ
 			self._pendingQ = nil
@@ -4472,9 +4481,6 @@ function Library:Confirm(o)
 		local tpx, tpy = snap(px.x * 4, 0.5), snap(py.x * 3 + pr * 1.5, 0.5)
 		local c1, c2 = chg("tpx", tpx, 0.2), chg("tpy", tpy, 0.2)
 		if c1 or c2 then tilt.Position = UDim2.new(0.5, tpx, 0.5, tpy) end
-		local rot = px.x * 1.2
-		rot = math.abs(rot) < 0.03 and 0 or snap(rot, 0.04)
-		if chg("trot", rot, 0.02) then tilt.Rotation = rot end
 
 		local sx, sy = -TX * 10, 6 + lf * 4 - TY * 10 - bob * 1.2
 		local s1, s2 = chg("shx", sx, 0.02), chg("shy", sy, 0.02)
@@ -5145,9 +5151,6 @@ do
 			local tpx, tpy = snap(RX * 4, 0.5), snap(RY * 3 + pr * 1.5, 0.5)
 			local c1, c2 = chg("tpx", tpx, 0.2), chg("tpy", tpy, 0.2)
 			if c1 or c2 then tilt.Position = UDim2.new(0.5, tpx, 0.5, tpy) end
-			local rot = RX * 1.15
-			rot = math.abs(rot) < 0.03 and 0 or snap(rot, 0.04)
-			if chg("trot", rot, 0.02) then tilt.Rotation = rot end
 
 			local wx = (math.sin(t * 0.9) + 0.45 * math.sin(t * 1.9 + 1.3)) * 0.7 * wave
 			local wy = (math.cos(t * 0.75 + 0.6) + 0.45 * math.sin(t * 1.5 + 2.1)) * 0.7 * wave
