@@ -45,6 +45,20 @@ local onClick
 local DRAG_SLOP = IS_TOUCH and 16 or 6
 
 local Themes = {
+	Aurora = {
+		Background = Color3.fromRGB(9, 10, 9), Sidebar = Color3.fromRGB(13, 14, 13),
+		Card = Color3.fromRGB(17, 18, 17), Element = Color3.fromRGB(23, 25, 23),
+		Hover = Color3.fromRGB(33, 36, 33), Stroke = Color3.fromRGB(40, 44, 40),
+		Text = Color3.fromRGB(240, 245, 240), SubText = Color3.fromRGB(125, 134, 125),
+		Accent = Color3.fromRGB(108, 220, 82), AccentText = Color3.fromRGB(8, 20, 6),
+	},
+	Daylight = {
+		Background = Color3.fromRGB(244, 246, 244), Sidebar = Color3.fromRGB(236, 239, 236),
+		Card = Color3.fromRGB(255, 255, 255), Element = Color3.fromRGB(240, 243, 240),
+		Hover = Color3.fromRGB(228, 232, 228), Stroke = Color3.fromRGB(214, 219, 214),
+		Text = Color3.fromRGB(20, 24, 20), SubText = Color3.fromRGB(108, 116, 108),
+		Accent = Color3.fromRGB(46, 170, 72), AccentText = Color3.fromRGB(255, 255, 255),
+	},
 	Monochrome = {
 		Background = Color3.fromRGB(10, 10, 10), Sidebar = Color3.fromRGB(15, 15, 15),
 		Card = Color3.fromRGB(21, 21, 21), Element = Color3.fromRGB(28, 28, 28),
@@ -89,15 +103,22 @@ local Themes = {
 	},
 }
 
+-- "Soft" = Element yang dicampur Accent (dipakai tab aktif di sidebar, gaya Aurora)
+for _, t in pairs(Themes) do
+	t.Soft = t.Element:Lerp(t.Accent, 0.16)
+end
+
 local Theme = {}
-for k, v in pairs(Themes.Monochrome) do Theme[k] = v end
+for k, v in pairs(Themes.Aurora) do Theme[k] = v end
 
 local Library = {
 	Flags = {}, Options = {}, Connections = {}, Windows = {},
-	Version = "2.0.0", ThemeName = "Monochrome",
-	ThemeList = { "Monochrome", "Crimson", "Ocean", "Emerald", "Violet", "Amber" },
+	Version = "2.1.0", ThemeName = "Aurora",
+	ThemeList = { "Aurora", "Monochrome", "Crimson", "Ocean", "Emerald", "Violet", "Amber", "Daylight" },
 	Transparency = 0, ConfigFolder = ROOT, Listening = false,
 	Effects = true,
+	Background = { Name = "Aurora", Intensity = 1 },
+	BackgroundList = { "Aurora", "Grid", "Particles", "None" },
 }
 
 local SliderLock = { Active = nil }
@@ -1217,7 +1238,7 @@ function Section:AddSlider(o)
 		corner(valueLbl, 6)
 		vst = stroke(valueLbl)
 	end
-	local track = new("Frame", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 1, -13), Size = UDim2.new(1, -24, 0, 6), Bg = "Stroke", Parent = row })
+	local track = new("Frame", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 1, -13), Size = UDim2.new(1, -24, 0, 4), Bg = "Stroke", Parent = row })
 	round(track)
 	local fill = new("Frame", { Size = UDim2.fromScale(0, 1), Bg = "Accent", Parent = track })
 	round(fill)
@@ -2615,7 +2636,7 @@ function Tab:AddSection(o)
 	local col = right and self.Right or self.Left
 
 	local card = new("Frame", {
-		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", LayoutOrder = self:_next(),
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", BackgroundTransparency = 0.1, LayoutOrder = self:_next(),
 		ClipsDescendants = true, Parent = col,
 	})
 	corner(card, 12)
@@ -2631,7 +2652,7 @@ function Tab:AddSection(o)
 		secBox = iconTile(header, o.Icon, 24, 14, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0) })
 	end
 	new("TextLabel", {
-		Text = o.Name or "Section", Font = FONT_BOLD, Fg = "Text", Position = UDim2.fromOffset(lx, 0),
+		Text = string.upper(o.Name or "Section"), Font = FONT_BOLD, TextSize = 11, Fg = "SubText", Position = UDim2.fromOffset(lx, 0),
 		Size = UDim2.new(1, -(lx + 34), 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = header,
 	})
 	local chev = makeIcon(header, "chevron", 14, "SubText", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Rotation = o.Collapsed and 0 or 180 })
@@ -2797,7 +2818,7 @@ function Window:AddTab(opts)
 	end
 
 	local h = isSub and 28 or 34
-	local btn = new("TextButton", { Size = UDim2.new(1, 0, 0, h), Bg = "Element", BackgroundTransparency = 1, LayoutOrder = layoutOrder, Parent = container })
+	local btn = new("TextButton", { Size = UDim2.new(1, 0, 0, h), Bg = "Soft", BackgroundTransparency = 1, LayoutOrder = layoutOrder, Parent = container })
 	corner(btn, 9)
 	local bar = new("Frame", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 2, 0.5, 0), Size = UDim2.fromOffset(3, 0), Bg = "Accent", Parent = btn })
 	corner(bar, 2)
@@ -2809,7 +2830,18 @@ function Window:AddTab(opts)
 	end
 	local lblX = hasIcon and (isSub and 36 or 42) or 12
 	tab.LabelX = lblX
-	local hasChevSpace = 26
+	local hasBadge = (not isSub) and opts.Badge ~= nil and tostring(opts.Badge) ~= ""
+	local hasChevSpace = hasBadge and 46 or 26
+	if hasBadge then
+		-- badge kecil ala "New" di Aurora Hub (hijau, pojok kanan tab)
+		tab.Badge = new("TextLabel", {
+			Text = tostring(opts.Badge), Font = FONT_BOLD, TextSize = 9, Bg = "Accent", Fg = "AccentText",
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0),
+			Size = UDim2.fromOffset(0, 14), AutomaticSize = AutoX, TextXAlignment = Enum.TextXAlignment.Center, Parent = btn,
+		})
+		round(tab.Badge)
+		padding(tab.Badge, 6, 0, 6, 0)
+	end
 	tab.Label = new("TextLabel", {
 		Text = tab.Name, TextColor3 = Theme.SubText, TextSize = isSub and 12 or 13,
 		Position = UDim2.fromOffset(lblX, 0), Size = UDim2.new(1, -(lblX + hasChevSpace), 1, 0),
@@ -2820,14 +2852,14 @@ function Window:AddTab(opts)
 
 	onHover(btn,
 		function()
-			if not tab.Active then tween(btn, { BackgroundTransparency = 0.55 }, 0.1) end
+			if not tab.Active then tween(btn, { BackgroundTransparency = 0.72 }, 0.1) end
 		end,
 		function()
 			if not tab.Active then tween(btn, { BackgroundTransparency = 1 }, 0.12) end
 		end)
 	connect(btn.InputBegan, function(i)
 		if i.UserInputType ~= Enum.UserInputType.Touch then return end
-		if not tab.Active then tween(btn, { BackgroundTransparency = 0.4 }, 0.04) end
+		if not tab.Active then tween(btn, { BackgroundTransparency = 0.55 }, 0.04) end
 		local con
 		con = i.Changed:Connect(function()
 			local stt = i.UserInputState
@@ -3449,7 +3481,10 @@ end
 
 function Window:SetUserVisible(v)
 	self.UserCard.Visible = v
-	tween(self.TabClip, { Size = UDim2.new(1, 0, 1, -(TABCLIP_Y + (v and 60 or 8))) }, 0.25)
+	tween(self.TabClip, { Size = UDim2.new(1, 0, 1, -(TABCLIP_Y + (v and 60 or 8) + (self._discExtra or 0))) }, 0.25)
+	if self.DiscordBtn then
+		tween(self.DiscordBtn, { Position = UDim2.new(0, 8, 1, v and -58 or -8) }, 0.25)
+	end
 end
 
 function Window:_statsRefresh()
@@ -3479,6 +3514,8 @@ function Window:CreateSettingsTab(opts)
 	local ap = tab:AddSection({ Name = "Appearance", Icon = "palette", Side = "Left" })
 	ap:AddDropdown({ Name = "Theme", Icon = "palette", Options = Library.ThemeList, Default = Library.ThemeName, AllowNone = false, Flag = "UI_Theme", Callback = function(v) Library:SetTheme(v) end })
 	ap:AddSlider({ Name = "Transparency", Icon = "contrast", Min = 0, Max = 0.8, Increment = 0.01, Default = Library.Transparency, Flag = "UI_Transparency", Callback = function(v) Library:SetTransparency(v) end })
+	ap:AddDropdown({ Name = "Background", Icon = "grid", Options = Library.BackgroundList, Default = Library.Background.Name, AllowNone = false, Flag = "UI_Background", Callback = function(v) Library:SetBackground(v) end })
+	ap:AddSlider({ Name = "Background Glow", Icon = "sun", Min = 0.2, Max = 2.5, Increment = 0.05, Default = Library.Background.Intensity, Suffix = "x", Flag = "UI_BackgroundGlow", Callback = function(v) Library:SetBackgroundIntensity(v) end })
 	ap:AddToggle({ Name = "Click Effects", Icon = "bolt", Default = true, Flag = "UI_Effects", Callback = function(v) Library:SetEffects(v) end })
 	ap:AddToggle({ Name = "Show User", Icon = "user", Default = true, Flag = "UI_ShowUser", Callback = function(v) self:SetUserVisible(v) end })
 	ap:AddToggle({ Name = "Show FPS", Icon = "pulse", Default = false, Flag = "UI_ShowFPS", Callback = function(v) self.ShowFPS = v self:_statsRefresh() end })
@@ -4555,6 +4592,156 @@ end
 
 function Window:Destroy() Library:Unload() end
 
+-- ============================================================
+-- Background animasi (terinspirasi Aurora Hub): Aurora / Grid / Particles / None
+-- Ditaruh di belakang Sidebar + Content, jadi terlihat di sela kartu & area kosong.
+-- ============================================================
+function Window:_clearBackground()
+	if self._bgLayer then
+		pcall(function() self._bgLayer:Destroy() end)
+		self._bgLayer = nil
+	end
+	local dead = {}
+	for _, tw in ipairs(self._bgTweens or {}) do
+		dead[tw] = true
+		pcall(function() tw:Cancel() end)
+	end
+	for i = #self._loops, 1, -1 do
+		if dead[self._loops[i]] then table.remove(self._loops, i) end
+	end
+	self._bgTweens, self._bgItems = {}, {}
+end
+
+function Window:_bgTrack(tw)
+	self._bgTweens[#self._bgTweens + 1] = tw
+	self._loops[#self._loops + 1] = tw
+	if not self.Visible or self.Minimized then pcall(function() tw:Pause() end) end
+	return tw
+end
+
+function Window:_bgLoop(obj, props, time, style, dir, reverses)
+	local tw = TweenService:Create(obj, TweenInfo.new(time, style or Enum.EasingStyle.Sine, dir or Enum.EasingDirection.InOut, -1, reverses ~= false), props)
+	tw:Play()
+	return self:_bgTrack(tw)
+end
+
+-- item: base = opacity (0..1) pada intensitas 1x, col = fungsi warna (ikut tema)
+function Window:_bgAdd(inst, prop, base, col)
+	local it = { inst = inst, prop = prop, base = base, col = col }
+	self._bgItems[#self._bgItems + 1] = it
+	inst[prop] = 1 - math.clamp(base * (Library.Background.Intensity or 1), 0, 1)
+	if col then
+		local cp = (prop == "ImageTransparency") and "ImageColor3" or "BackgroundColor3"
+		it.colorProp = cp
+		inst[cp] = col()
+	end
+	return it
+end
+
+function Window:_bgIntensity()
+	local k = Library.Background.Intensity or 1
+	for _, it in ipairs(self._bgItems or {}) do
+		if it.inst.Parent then
+			it.inst[it.prop] = 1 - math.clamp(it.base * k, 0, 1)
+		end
+	end
+end
+
+function Window:_bgRecolor()
+	for _, it in ipairs(self._bgItems or {}) do
+		if it.col and it.inst.Parent then
+			pcall(function() it.inst[it.colorProp] = it.col() end)
+		end
+	end
+end
+
+function Window:_applyBackground()
+	if not self.Body then return end
+	self:_clearBackground()
+	local name = Library.Background.Name
+	if name == "None" or not name then return end
+
+	local W, H = BASE_W, BASE_H - HEADER_H - 1
+	local layer = new("Frame", { Name = "Backdrop", Size = UDim2.fromScale(1, 1), ClipsDescendants = true, ZIndex = 0, Active = false, Parent = self.Body })
+	self._bgLayer = layer
+
+	if name == "Aurora" then
+		local glow = FX.Assets.glow
+		local function blob(w, h, x0, y0, x1, y1, base, col, time)
+			local b
+			if glow then
+				b = new("ImageLabel", { Image = glow, ScaleType = Enum.ScaleType.Stretch })
+			else
+				b = new("Frame")
+				round(b)
+			end
+			b.AnchorPoint = Vector2.new(0.5, 0.5)
+			b.Size = UDim2.fromOffset(w, h)
+			b.Position = UDim2.fromScale(x0, y0)
+			b.ZIndex = 0
+			b.Parent = layer
+			self:_bgAdd(b, glow and "ImageTransparency" or "BackgroundTransparency", base, col)
+			self:_bgLoop(b, { Position = UDim2.fromScale(x1, y1) }, time)
+		end
+		local function teal() return Theme.Accent:Lerp(Color3.fromRGB(40, 200, 190), 0.55) end
+		local function lime() return Theme.Accent:Lerp(Color3.fromRGB(190, 255, 90), 0.4) end
+		local function acc() return Theme.Accent end
+		blob(460, 320, 0.30, 0.15, 0.55, 0.40, 0.34, acc, 9)
+		blob(400, 300, 0.85, 0.90, 0.60, 0.62, 0.30, teal, 12)
+		blob(320, 240, 0.65, 0.05, 0.92, 0.30, 0.26, lime, 15)
+	elseif name == "Grid" then
+		local cell = 28
+		local cols, rows = math.ceil(W / cell) + 2, math.ceil(H / cell) + 2
+		local grid = new("Frame", { Size = UDim2.fromOffset(cols * cell, rows * cell), Position = UDim2.fromOffset(-cell, -cell), ZIndex = 0, Parent = layer })
+		local function stk() return Theme.Stroke:Lerp(Theme.Accent, 0.18) end
+		for i = 0, cols do
+			local l = new("Frame", { Position = UDim2.fromOffset(i * cell, 0), Size = UDim2.new(0, 1, 1, 0), ZIndex = 0, Parent = grid })
+			self:_bgAdd(l, "BackgroundTransparency", 0.7, stk)
+		end
+		for j = 0, rows do
+			local l = new("Frame", { Position = UDim2.fromOffset(0, j * cell), Size = UDim2.new(1, 0, 0, 1), ZIndex = 0, Parent = grid })
+			self:_bgAdd(l, "BackgroundTransparency", 0.7, stk)
+		end
+		self:_bgLoop(grid, { Position = UDim2.fromOffset(0, 0) }, 3.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, false)
+	elseif name == "Particles" then
+		local n = IS_TOUCH and 8 or 16
+		for _ = 1, n do
+			local sz = math.random(3, 7)
+			local x, y0 = math.random(), math.random()
+			local p = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(sz, sz), Position = UDim2.fromScale(x, y0), ZIndex = 0, Parent = layer })
+			round(p)
+			self:_bgAdd(p, "BackgroundTransparency", 0.28 + math.random() * 0.3, function() return Theme.Accent end)
+			local dur = 9 + math.random() * 9
+			local first = TweenService:Create(p, TweenInfo.new(dur * (y0 + 0.05) / 1.1, Enum.EasingStyle.Linear), { Position = UDim2.fromScale(x, -0.05) })
+			first:Play()
+			self:_bgTrack(first)
+			first.Completed:Connect(function(state)
+				for i = #self._loops, 1, -1 do
+					if self._loops[i] == first then table.remove(self._loops, i) break end
+				end
+				if state ~= Enum.PlaybackState.Completed or not p.Parent then return end
+				p.Position = UDim2.fromScale(x, 1.05)
+				self:_bgLoop(p, { Position = UDim2.fromScale(x, -0.05) }, dur, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, false)
+			end)
+		end
+	end
+end
+
+function Library:SetBackground(name)
+	if not table.find(Library.BackgroundList, name) then return end
+	Library.Background.Name = name
+	for _, w in ipairs(Library.Windows) do
+		if w._applyBackground then pcall(w._applyBackground, w) end
+	end
+end
+
+function Library:SetBackgroundIntensity(v)
+	Library.Background.Intensity = math.clamp(tonumber(v) or 1, 0, 3)
+	for _, w in ipairs(Library.Windows) do
+		if w._bgIntensity then pcall(w._bgIntensity, w) end
+	end
+end
+
 function Library:CreateWindow(opts)
 	opts = opts or {}
 	local self = setmetatable({
@@ -4590,6 +4777,9 @@ function Library:CreateWindow(opts)
 	local BODY_H = BASE_H - HEADER_H - 1
 	local Body = new("Frame", { Name = "Body", Position = UDim2.fromOffset(0, HEADER_H + 1), Size = UDim2.fromOffset(BASE_W, BODY_H), Parent = Canvas })
 	self.Body = Body
+	self._bgItems, self._bgTweens = {}, {}
+	Hooks[#Hooks + 1] = function() self:_bgRecolor() end
+	self:_applyBackground()
 
 	local Header = new("Frame", { Size = UDim2.new(1, 0, 0, HEADER_H), Bg = "Sidebar", BackgroundTransparency = Library.Transparency, Parent = Canvas })
 	TransFrames[#TransFrames + 1] = Header
@@ -4748,8 +4938,10 @@ function Library:CreateWindow(opts)
 		self:_queueFilter(sbox.Text)
 	end)
 
+	local hasDisc = type(opts.Discord) == "string" and opts.Discord ~= ""
+	self._discExtra = hasDisc and 38 or 0
 	self.TabClip = new("Frame", {
-		Name = "TabClip", Position = UDim2.fromOffset(0, TABCLIP_Y), Size = UDim2.new(1, 0, 1, -(TABCLIP_Y + 60)), ClipsDescendants = true, Parent = Sidebar,
+		Name = "TabClip", Position = UDim2.fromOffset(0, TABCLIP_Y), Size = UDim2.new(1, 0, 1, -(TABCLIP_Y + 60 + self._discExtra)), ClipsDescendants = true, Parent = Sidebar,
 	})
 	self.TabList = new("ScrollingFrame", {
 		Size = UDim2.fromScale(1, 1), CanvasSize = UDim2.new(),
@@ -4772,6 +4964,36 @@ function Library:CreateWindow(opts)
 	end)
 	new("TextLabel", { Text = LocalPlayer.DisplayName, Font = FONT_BOLD, TextSize = 12, Fg = "Text", Position = UDim2.fromOffset(44, 6), Size = UDim2.new(1, -50, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, Parent = self.UserCard })
 	new("TextLabel", { Text = "@" .. LocalPlayer.Name, TextSize = 10, Fg = "SubText", Position = UDim2.fromOffset(44, 22), Size = UDim2.new(1, -50, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, Parent = self.UserCard })
+
+	if hasDisc then
+		-- tombol "Join the Discord" ala Aurora Hub, di atas kartu user
+		local blurple = Color3.fromRGB(88, 101, 242)
+		local dbtn = new("Frame", {
+			Name = "DiscordButton", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 8, 1, -58),
+			Size = UDim2.new(1, -16, 0, 32), BackgroundColor3 = blurple, ZIndex = 5, Parent = Sidebar,
+		})
+		self.DiscordBtn = dbtn
+		corner(dbtn, 10)
+		gradient(dbtn, 215)
+		local dic = makeIcon(dbtn, "chat", 14, nil, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), ZIndex = 6 })
+		dic.ImageColor3 = Color3.new(1, 1, 1)
+		local dg = dic:FindFirstChild("Glyph")
+		if dg then dg.TextColor3 = Color3.new(1, 1, 1) end
+		new("TextLabel", {
+			Text = opts.DiscordTitle or "Join the Discord", Font = FONT_BOLD, TextSize = 12, TextColor3 = Color3.new(1, 1, 1),
+			Position = UDim2.fromOffset(32, 0), Size = UDim2.new(1, -40, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 6, Parent = dbtn,
+		})
+		local dhit = hitZone(dbtn, { ZIndex = 7 })
+		onHover(dhit,
+			function() tween(dbtn, { BackgroundColor3 = blurple:Lerp(Color3.new(1, 1, 1), 0.12) }, 0.15) end,
+			function() tween(dbtn, { BackgroundColor3 = blurple }, 0.2) end)
+		onClick(dhit, function(pos)
+			FX.ripple(dbtn, pos, Color3.new(1, 1, 1), { Radius = 10, Alpha = 0.8, Time = 0.5 })
+			local clip = setclipboard or toclipboard or (syn and syn.write_clipboard)
+			local ok = clip and pcall(clip, opts.Discord) or false
+			Library:Notify({ Title = "Discord", Content = ok and "Invite copied to clipboard." or "Your executor has no clipboard.", Icon = "chat" })
+		end)
+	end
 
 	self.Content = new("Frame", { Position = UDim2.fromOffset(SIDEBAR_W + 1, 0), Size = UDim2.new(1, -(SIDEBAR_W + 1), 1, 0), ClipsDescendants = true, Parent = Body })
 
@@ -5218,9 +5440,10 @@ local function RunDemo()
 local Window = Library:CreateWindow({
 	Title = "ZystrixUI Tester",
 	Subtitle = "Component playground",
-	Version = "v2.0",
+	Version = "v2.1",
 	ConfigFolder = "ZystrixTester",
 	ToggleKey = Enum.KeyCode.J,
+	Discord = "discord.gg/yourinvite",
 })
 
 local function stamp() return os.date("%H:%M:%S") end
@@ -5374,7 +5597,7 @@ end, Changed = function(k)
 end })
 
 local Drops = Window:AddTab({
-	Name = "Dropdown", Icon = "list", Group = "TESTER",
+	Name = "Dropdown", Icon = "list", Group = "TESTER", Badge = "New",
 	Description = "Dropdown test: short list, long list (scroll) and dynamic list.",
 })
 local dr = Drops:AddSection({ Name = "Basic", Icon = "list", Side = "Left" })
