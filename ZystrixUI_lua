@@ -795,26 +795,91 @@ function Library:SetTransparency(v)
 	for _, f in ipairs(TransFrames) do tween(f, { BackgroundTransparency = v }, 0.25) end
 end
 
-local NOTIFY_W, NOTIFY_MAX, NOTIFY_OFF = 260, 4, 300
-local NotifHolder = new("Frame", { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -14, 1, -14), Size = UDim2.fromOffset(NOTIFY_W, 440), Parent = Gui })
+-- Lebar teks (px lokal, belum kena UIScale)
+local function textWidth(text, size, font)
+	local ok, sz = pcall(function()
+		return TextService:GetTextSize(tostring(text), size, font or FONT, Vector2.new(10000, 100))
+	end)
+	if ok and sz then return sz.X end
+	return #tostring(text) * size * 0.6
+end
+
+-- Paksa teks tetap SATU baris: kecilkan font (maxSize -> minSize) dulu agar muat,
+-- baru dipotong "..." sebagai jalan terakhir. Tidak pernah wrap ke bawah / kepotong vertikal.
+-- inset = padding kiri+kanan yang dipakai teks, fixedW = lebar lokal tetap (opsional).
+local function fitLine(lbl, maxSize, minSize, inset, fixedW)
+	lbl.TextWrapped = false
+	lbl.TextYAlignment = Enum.TextYAlignment.Center
+	lbl.TextTruncate = Enum.TextTruncate.AtEnd
+	local function refit()
+		local w = fixedW or (lbl.AbsoluteSize.X / math.max(getScale(), 0.01))
+		w = w - (inset or 0) - 2
+		if w <= 4 then return end
+		local size = maxSize
+		while size > minSize and textWidth(lbl.Text, size, lbl.Font) > w do
+			size -= 1
+		end
+		if lbl.TextSize ~= size then lbl.TextSize = size end
+	end
+	connect(lbl:GetPropertyChangedSignal("AbsoluteSize"), refit)
+	connect(lbl:GetPropertyChangedSignal("Text"), refit)
+	task.defer(refit)
+	return refit
+end
+
+local NOTIFY_W, NOTIFY_MAX, NOTIFY_OFF = 272, 4, 330
+local NotifHolder = new("Frame", { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -14, 1, -14), Size = UDim2.fromOffset(NOTIFY_W, 460), Parent = Gui })
 new("UIListLayout", {
-	Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder,
+	Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder,
 	VerticalAlignment = Enum.VerticalAlignment.Bottom, HorizontalAlignment = Enum.HorizontalAlignment.Right, Parent = NotifHolder,
 })
 local NotifToasts, NotifSerial = {}, 0
 
+-- Notify({ Type = "success" | "warning" | "error" }) memberi warna + ikon otomatis; tanpa Type = warna Accent tema.
+local NOTIFY_TONES = {
+	success = { Color3.fromRGB(64, 196, 108), "check" },
+	warning = { Color3.fromRGB(242, 178, 44), "info" },
+	error = { Color3.fromRGB(228, 70, 80), "close" },
+}
+
+-- Toast lama otomatis meredup & sedikit bergeser ke kanan supaya terasa bertumpuk (kedalaman).
+local function notifyRestack()
+	local n = #NotifToasts
+	for i, e in ipairs(NotifToasts) do
+		local depth = n - i
+		e.depth = depth
+		if not e.dead then
+			tween(e.dim, { BackgroundTransparency = e.hover and 1 or (1 - math.min(depth * 0.1, 0.3)) }, 0.25)
+			if not e.hover then
+				tween(e.mover, { Position = UDim2.fromOffset(depth * 3, 0) }, 0.35, Enum.EasingStyle.Back)
+			end
+		end
+	end
+end
+
 function Library:Notify(o)
 	o = o or {}
 	local dur = tonumber(o.Duration) or 4
-	while #NotifToasts >= NOTIFY_MAX do NotifToasts[1]() end
+	while #NotifToasts >= NOTIFY_MAX do NotifToasts[1].Dismiss() end
 	NotifSerial += 1
+
+	local KP = NumberSequenceKeypoint.new
+	local kind = o.Type and NOTIFY_TONES[string.lower(tostring(o.Type))] or nil
+	local tone = kind and kind[1] or nil
+	local icon = o.Icon or (kind and kind[2]) or "info"
 
 	local slot = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, LayoutOrder = NotifSerial, Parent = NotifHolder })
 	local mover = new("Frame", {
-		Position = UDim2.fromOffset(NOTIFY_OFF, 0), Size = UDim2.new(1, 0, 0, 64), Parent = slot,
+		Position = UDim2.fromOffset(NOTIFY_OFF, 0), Rotation = 7, Size = UDim2.new(1, 0, 0, 64), Parent = slot,
 	})
-	makeShadow(mover, 12, { Steps = 4, Step = 4, Alpha = 0.05 })
-	local toast = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", Parent = mover })
+	makeShadow(mover, 12, { Steps = 5, Step = 4, Alpha = 0.06, Offset = 5 })
+
+	-- "tebal" toast: lempeng gelap di belakang kartu, bergeser berlawanan saat di-hover (efek 3D)
+	local slab = new("Frame", { Name = "Slab", Position = UDim2.fromOffset(0, 4), Size = UDim2.fromScale(1, 1), Bg = "Background", ZIndex = 1, Parent = mover })
+	corner(slab, 12)
+	stroke(slab)
+
+	local toast = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", ZIndex = 2, Parent = mover })
 	corner(toast, 12)
 	local tstroke = stroke(toast)
 	gradient(toast, 215)
@@ -822,37 +887,74 @@ function Library:Notify(o)
 		local h = toast.AbsoluteSize.Y
 		if h > 0 then mover.Size = UDim2.new(1, 0, 0, h) end
 	end)
-	padding(toast, 14, 11, 14, 12)
+	padding(toast, 18, 11, 14, 12)
 	listLayout(toast, 7)
 
 	local head = new("Frame", { Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 1, Parent = toast })
-	local nbox = iconTile(head, o.Icon or "info", 26, 15, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0) })
-	new("TextLabel", {
+	local nbox, nimg
+	local nprops = { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0) }
+	if tone then
+		nbox, nimg = iconTile(head, icon, 26, 15, nprops, true)
+		nbox.BackgroundColor3 = tone
+		local lum = tone.R * 0.299 + tone.G * 0.587 + tone.B * 0.114
+		tintIcon(nimg, lum > 0.55 and Color3.fromRGB(10, 18, 10) or Color3.new(1, 1, 1), 0.01)
+	else
+		nbox, nimg = iconTile(head, icon, 26, 15, nprops)
+	end
+	local titleLbl = new("TextLabel", {
 		Text = o.Title or "Notification", Font = FONT_BOLD, TextSize = 14, Fg = "Text", Position = UDim2.fromOffset(36, 0),
-		Size = UDim2.new(1, -36, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = head,
+		Size = UDim2.new(1, -36, 1, 0), Parent = head,
 	})
+	fitLine(titleLbl, 14, 11)
 	if o.Content and o.Content ~= "" then
 		new("TextLabel", {
 			Text = o.Content, Fg = "SubText", TextSize = 12, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY,
 			TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 2, Parent = toast,
 		})
 	end
-	local bar = new("Frame", { Size = UDim2.new(1, 0, 0, 4), Bg = "Stroke", LayoutOrder = 3, Parent = toast })
-	corner(bar, 2)
-	local fill = new("Frame", { Size = UDim2.fromScale(1, 1), Bg = "Accent", Parent = bar })
-	corner(fill, 2)
+	local bar = new("Frame", { Size = UDim2.new(1, 0, 0, 3), Bg = "Stroke", LayoutOrder = 3, Parent = toast })
+	round(bar)
+	local fillProps = { Size = UDim2.fromScale(1, 1), Parent = bar }
+	if tone then fillProps.BackgroundColor3 = tone else fillProps.Bg = "Accent" end
+	local fill = new("Frame", fillProps)
+	round(fill)
 	gradient(fill, 0)
+	-- titik terang di ujung progress bar
+	local spark = new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(1, 0.5), Size = UDim2.fromOffset(7, 7),
+		BackgroundColor3 = Color3.new(1, 1, 1), Parent = fill,
+	})
+	round(spark)
 
-	local dismissed, hit = false, nil
+	-- lapisan dekorasi (tidak ikut layout toast): strip warna, garis kilap atas, overlay peredup
+	local chrome = new("Frame", { Name = "Chrome", Size = UDim2.fromScale(1, 1), ZIndex = 4, Parent = mover })
+	local stripProps = { Position = UDim2.new(0, 7, 0, 10), Size = UDim2.new(0, 3, 1, -20), Parent = chrome }
+	if tone then stripProps.BackgroundColor3 = tone else stripProps.Bg = "Accent" end
+	round(new("Frame", stripProps))
+	local rimProps = { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -28, 0, 1), Parent = chrome }
+	if tone then rimProps.BackgroundColor3 = tone else rimProps.Bg = "Accent" end
+	local rim = new("Frame", rimProps)
+	local rimGrad = new("UIGradient", {
+		Transparency = NumberSequence.new({ KP(0, 1), KP(0.5, 0.1), KP(1, 1) }), Offset = Vector2.new(-1, 0), Parent = rim,
+	})
+	local dim = new("Frame", {
+		Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, ZIndex = 5, Parent = chrome,
+	})
+	corner(dim, 12)
+
+	local entry = { mover = mover, dim = dim, depth = 0, dead = false, hover = false }
+	local fillTw, hit
 	local function dismiss()
-		if dismissed then return end
-		dismissed = true
+		if entry.dead then return end
+		entry.dead = true
+		if fillTw then pcall(function() fillTw:Cancel() end) end
 		if hit then hit.Active = false hit.Visible = false end
 		for i = #NotifToasts, 1, -1 do
-			if NotifToasts[i] == dismiss then table.remove(NotifToasts, i) end
+			if NotifToasts[i] == entry then table.remove(NotifToasts, i) end
 		end
-		tween(mover, { Position = UDim2.fromOffset(NOTIFY_OFF, 0) }, 0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-		task.delay(0.26, function()
+		notifyRestack()
+		tween(mover, { Position = UDim2.fromOffset(NOTIFY_OFF, 0), Rotation = -6 }, 0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		task.delay(0.28, function()
 			if not slot.Parent then return end
 			local h = slot.AbsoluteSize.Y
 			slot.AutomaticSize = AutoNone
@@ -864,32 +966,67 @@ function Library:Notify(o)
 			end)
 		end)
 	end
-	NotifToasts[#NotifToasts + 1] = dismiss
+	entry.Dismiss = dismiss
+	NotifToasts[#NotifToasts + 1] = entry
 
 	hit = new("TextButton", { Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = slot })
 	onClick(hit, dismiss)
+
 	if not IS_TOUCH then
+		local function tiltTo(rx, ry)
+			local tp = UDim2.fromOffset(snap(-rx * 2.5, 0.5), snap(-ry * 2, 0.5))
+			toast.Position = tp
+			chrome.Position = tp
+			slab.Position = UDim2.fromOffset(snap(rx * 2, 0.5), 4 + snap(ry * 1.5, 0.5))
+			nbox.Position = UDim2.new(0, snap(rx * 2.5, 0.5), 0.5, snap(ry * 2, 0.5))
+		end
 		connect(hit.MouseEnter, function()
-			if dismissed then return end
+			if entry.dead then return end
+			entry.hover = true
+			if fillTw then fillTw:Pause() end
 			tween(toast, { BackgroundColor3 = Theme.Hover }, 0.15)
-			tween(mover, { Position = UDim2.fromOffset(-4, 0) }, 0.18, Enum.EasingStyle.Quad)
+			tween(mover, { Position = UDim2.fromOffset(entry.depth * 3 - 6, 0) }, 0.2, Enum.EasingStyle.Quad)
+			tween(dim, { BackgroundTransparency = 1 }, 0.15)
+		end)
+		connect(hit.MouseMoved, function()
+			if entry.dead then return end
+			local m = UserInputService:GetMouseLocation()
+			local ap, as = mover.AbsolutePosition, mover.AbsoluteSize
+			if as.X <= 0 or as.Y <= 0 then return end
+			tiltTo(
+				math.clamp((m.X - (ap.X + as.X / 2)) / (as.X / 2), -1, 1),
+				math.clamp((m.Y - (ap.Y + as.Y / 2)) / (as.Y / 2), -1, 1))
 		end)
 		connect(hit.MouseLeave, function()
-			if dismissed then return end
-			tween(toast, { BackgroundColor3 = Theme.Card }, 0.2)
-			tween(mover, { Position = UDim2.fromOffset(0, 0) }, 0.2, Enum.EasingStyle.Quad)
+			if entry.dead then return end
+			entry.hover = false
+			if fillTw then fillTw:Play() end
+			tween(toast, { BackgroundColor3 = Theme.Card, Position = UDim2.new() }, 0.2)
+			tween(chrome, { Position = UDim2.new() }, 0.2)
+			tween(slab, { Position = UDim2.fromOffset(0, 4) }, 0.2)
+			tween(nbox, { Position = UDim2.new(0, 0, 0.5, 0) }, 0.2)
+			notifyRestack()
 		end)
 	end
 
-	tween(mover, { Position = UDim2.fromOffset(0, 0) }, 0.45, Enum.EasingStyle.Back)
-	tstroke.Color = Theme.Accent
+	-- masuk: meluncur dari kanan sambil berayun (rotasi) dan memantul di akhir
+	notifyRestack()
+	tween(mover, { Position = UDim2.fromOffset(0, 0), Rotation = 0 }, 0.55, Enum.EasingStyle.Back)
+	tstroke.Color = tone or Theme.Accent
 	tween(tstroke, { Color = Theme.Stroke }, 1.0, Enum.EasingStyle.Quad)
-	task.delay(0.16, function()
-		if nbox.Parent then FX.pop(nbox, 0.3, 0.55) end
+	tween(rimGrad, { Offset = Vector2.new(1, 0) }, 0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+	task.delay(0.18, function()
+		if entry.dead or not nbox.Parent then return end
+		FX.pop(nbox, 0.3, 0.55)
+		local c = nbox.AbsolutePosition + nbox.AbsoluteSize / 2
+		FX.ring(c, tone or Theme.Accent, 14, 46, 0.55, 0.5)
 	end)
 	if dur > 0 then
-		tween(fill, { Size = UDim2.fromScale(0, 1) }, dur, Enum.EasingStyle.Linear)
-		task.delay(dur, dismiss)
+		fillTw = TweenService:Create(fill, TweenInfo.new(dur, Enum.EasingStyle.Linear), { Size = UDim2.fromScale(0, 1) })
+		fillTw.Completed:Connect(function(state)
+			if state == Enum.PlaybackState.Completed then dismiss() end
+		end)
+		fillTw:Play()
 	end
 	return { Dismiss = dismiss }
 end
@@ -1557,10 +1694,13 @@ function Section:AddButton(o)
 	if primary then
 		gradient(row, 200)
 		target = row
+		-- inset simetris kiri/kanan supaya teks tetap center dan tidak menimpa ikon
 		lbl = new("TextLabel", {
-			Text = o.Name or "Button", Fg = "Background", Font = FONT_BOLD, Size = UDim2.fromScale(1, 1),
-			TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
+			Text = o.Name or "Button", Fg = "Background", Font = FONT_BOLD, AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.fromScale(0.5, 0), Size = UDim2.new(1, o.Icon and -76 or -28, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Center, Parent = row,
 		})
+		fitLine(lbl, 13, 10)
 		if o.Icon then
 			iconImg = makeIcon(row, o.Icon, 16, "Background", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 0) })
 		end
@@ -1568,8 +1708,12 @@ function Section:AddButton(o)
 	else
 		local hasIcon = o.Icon ~= nil
 		local hasText = o.ButtonText ~= nil or not hasIcon
-		local pw = (hasIcon and hasText) and 80 or (hasIcon and 36 or 54)
+		-- lebar pill mengikuti teks tombol (bukan angka tetap) agar "Execute", "Teleport" dst tidak terpotong
+		local btnText = o.ButtonText or "Run"
+		local want = math.ceil(textWidth(btnText, 12, FONT_BOLD)) + (hasIcon and 38 or 26)
+		local pw = hasText and math.clamp(math.max(want, hasIcon and 80 or 54), 54, 170) or 36
 		lbl = rowLabel(row, o.Name, UDim2.new(1, -(pw + 24), 1, 0))
+		fitLine(lbl, 13, 10)
 		target = new("Frame", {
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(pw, 28),
 			Bg = "Hover", Parent = row,
@@ -1585,11 +1729,12 @@ function Section:AddButton(o)
 			end
 		end
 		if hasText then
-			new("TextLabel", {
-				Text = o.ButtonText or "Run", Fg = "Text", TextSize = 12, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Center,
+			local pillLbl = new("TextLabel", {
+				Text = btnText, Fg = "Text", TextSize = 12, Font = FONT_BOLD, TextXAlignment = Enum.TextXAlignment.Center,
 				Position = UDim2.fromOffset(hasIcon and 14 or 0, 0), Size = UDim2.new(1, hasIcon and -14 or 0, 1, 0),
-				TextTruncate = Enum.TextTruncate.AtEnd, Parent = target,
+				Parent = target,
 			})
+			fitLine(pillLbl, 12, 9, 8, pw - (hasIcon and 14 or 0))
 		end
 		hit = hitZone(row, {
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.fromOffset(math.max(pw + 24, HIT_W), 40),
@@ -4240,7 +4385,7 @@ function Library:Confirm(o)
 	end
 	local textY = 78
 	local btnY = textY + (textH > 0 and (textH + 16) or 0)
-	local H = btnY + 38 + 18
+	local H = btnY + 42 + 18
 
 	local vp = viewport()
 	local s = math.min(1, vp.X * 0.92 / W, vp.Y * 0.92 / H)
@@ -4253,7 +4398,7 @@ function Library:Confirm(o)
 		Name = "Confirm", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 26),
 		Size = UDim2.fromOffset(W, H), ZIndex = 101, Parent = Gui,
 	})
-	local rootScale = new("UIScale", { Scale = s, Parent = root })
+	local rootScale = new("UIScale", { Scale = s * 0.86, Parent = root })
 	local tilt = new("Frame", {
 		Name = "Tilt", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(1, 1), Parent = root,
@@ -4272,6 +4417,19 @@ function Library:Confirm(o)
 		local st = stroke(f, "Stroke", 1)
 		st.Transparency = 1
 		plates[k] = { Frame = f, Stroke = st, Base = 0.3 + k * 0.2 }
+	end
+
+	-- "tebal" dialog: lempeng solid tepat di bawah kartu; bergeser berlawanan arah tilt sehingga terlihat 3D
+	local slab = new("Frame", {
+		Name = "Slab", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 5),
+		Size = UDim2.new(1, -2, 1, -2), Bg = "Background", BackgroundTransparency = 1, ZIndex = 1, Parent = tilt,
+	})
+	corner(slab, 16)
+	local slabStroke = stroke(slab, "Stroke", 1)
+	slabStroke.Transparency = 1
+	if danger then
+		slab.BackgroundColor3 = Color3.fromRGB(70, 16, 22)
+		slabStroke.Color = RED:Lerp(Color3.new(0, 0, 0), 0.4)
 	end
 
 	local card = new("CanvasGroup", {
@@ -4342,26 +4500,54 @@ function Library:Confirm(o)
 		Position = UDim2.fromOffset(0, 31), Size = UDim2.new(1, 0, 0, 20), TextTruncate = Enum.TextTruncate.AtEnd, Parent = titleBlock,
 	})
 
+	local bodyLbl
 	if textH > 0 then
 		new("Frame", { Position = UDim2.fromOffset(20, 64), Size = UDim2.new(1, -40, 0, 1), Bg = "Stroke", Parent = card })
-		new("TextLabel", {
+		bodyLbl = new("TextLabel", {
 			Text = body, TextSize = 12, Fg = "SubText", Position = UDim2.fromOffset(20, textY), Size = UDim2.new(1, -40, 0, textH),
 			TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, Parent = card,
 		})
 	end
 
 	local bw = (W - 40 - 10) / 2
-	local cancel = new("TextButton", {
-		Position = UDim2.fromOffset(20, btnY), Size = UDim2.fromOffset(bw, 38), Bg = "Element", Text = o.CancelText or "Cancel",
-		Font = FONT_BOLD, TextSize = 13, Fg = "Text", TextXAlignment = Enum.TextXAlignment.Center, Parent = card,
-	})
-	corner(cancel, 11)
+	local btnRow = new("Frame", { Name = "Buttons", Position = UDim2.fromOffset(0, btnY), Size = UDim2.fromOffset(W, 42), Parent = card })
+
+	-- Tombol "keycap" 3D: wajah tombol duduk di atas alas gelap setebal 4px.
+	-- Hover = terangkat 1px, ditekan = turun menempel ke alas, lepas = memantul balik.
+	local function makeKey(x, props, baseColor)
+		local base = new("Frame", {
+			Position = UDim2.fromOffset(x, 4), Size = UDim2.fromOffset(bw, 38), BackgroundColor3 = baseColor, Parent = btnRow,
+		})
+		corner(base, 11)
+		props.Position = UDim2.fromOffset(x, 0)
+		props.Size = UDim2.fromOffset(bw, 38)
+		props.Font = FONT_BOLD
+		props.TextSize = 13
+		props.TextXAlignment = Enum.TextXAlignment.Center
+		props.ZIndex = 2
+		props.Parent = btnRow
+		local face = new("TextButton", props)
+		corner(face, 11)
+		gradient(face, 200)
+		padding(face, 8, 0, 8, 0)
+		fitLine(face, 13, 10, 16, bw)
+		local hov = false
+		local function lift(y, t, style)
+			tween(face, { Position = UDim2.fromOffset(x, y) }, t, style or Enum.EasingStyle.Quint)
+		end
+		connect(face.MouseEnter, function() hov = true lift(-1, 0.12) end)
+		connect(face.MouseLeave, function() hov = false lift(0, 0.16) end)
+		connect(face.MouseButton1Down, function() lift(3, 0.05, Enum.EasingStyle.Quad) end)
+		connect(face.MouseButton1Up, function() lift(hov and -1 or 0, 0.24, Enum.EasingStyle.Back) end)
+		return face, base
+	end
+
+	local cancel = makeKey(20, {
+		Bg = "Element", Fg = "Text", Text = o.CancelText or "Cancel",
+	}, Theme.Element:Lerp(Color3.new(0, 0, 0), 0.5))
 	stroke(cancel)
-	gradient(cancel, 185)
-	local okProps = {
-		Position = UDim2.fromOffset(20 + bw + 10, btnY), Size = UDim2.fromOffset(bw, 38), Text = o.ConfirmText or "Yes",
-		Font = FONT_BOLD, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, Parent = card,
-	}
+
+	local okProps = { Text = o.ConfirmText or "Yes" }
 	if danger then
 		okProps.BackgroundColor3 = RED
 		okProps.TextColor3 = WHITE
@@ -4369,9 +4555,7 @@ function Library:Confirm(o)
 		okProps.Bg = "Accent"
 		okProps.Fg = "AccentText"
 	end
-	local okb = new("TextButton", okProps)
-	corner(okb, 11)
-	gradient(okb, 200)
+	local okb = makeKey(20 + bw + 10, okProps, tone:Lerp(Color3.new(0, 0, 0), 0.5))
 	local function okRest() return danger and RED or Theme.Accent end
 
 	onHover(cancel,
@@ -4400,6 +4584,7 @@ function Library:Confirm(o)
 		tween(blocker, { BackgroundTransparency = 1 }, 0.16)
 		tween(card, { GroupTransparency = 1 }, 0.14)
 		tween(root, { Position = UDim2.new(0.5, 0, 0.5, 14) }, 0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		tween(rootScale, { Scale = s * 0.94 }, 0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 		shadow:Fade(false, 0.14)
 		task.delay(0.18, function()
 			if loopCon then loopCon:Disconnect() end
@@ -4534,6 +4719,19 @@ function Library:Confirm(o)
 			end
 		end
 
+		-- lempeng tebal: bergeser berlawanan dengan kartu (kedalaman), muncul bersama animasi masuk
+		local slx, sly = snap(-TX * 4, 0.5), snap(5 + 4 * spread - TY * 3, 0.5)
+		local sl1, sl2 = chg("slx", slx, 0.2), chg("sly", sly, 0.2)
+		if sl1 or sl2 then slab.Position = UDim2.new(0.5, slx, 0.5, sly) end
+		if aCh then
+			slab.BackgroundTransparency = 1 - 0.96 * vis
+			slabStroke.Transparency = 1 - 0.75 * vis
+		end
+
+		-- kemiringan singkat saat masuk/keluar (nol saat diam supaya teks tetap tajam)
+		local rot = vis > 0.99 and 0 or -(1 - vis) * 5
+		if chg("rot", rot, 0.01) then tilt.Rotation = rot end
+
 		local go = math.clamp(TX * 0.55 + TY * 0.2, -0.85, 0.85)
 		if chg("glo", go, 0.004) then glareGrad.Offset = Vector2.new(go, 0) end
 		local gt = 1 - vis * (0.5 + 0.5 * math.clamp(lf, 0, 1))
@@ -4550,10 +4748,18 @@ function Library:Confirm(o)
 			tile.Position = UDim2.fromOffset(20 + IX, 18 + IY)
 			titleBlock.Position = UDim2.fromOffset(64 + snap(IX * 0.5, 0.5), snap(IY * 0.5, 0.5))
 		end
+		-- lapisan kedalaman: isi teks sedikit mengikuti, tombol bergeser berlawanan
+		local BX, BY = snap(px.x * 1.5, 0.5), snap(py.x * 1.5, 0.5)
+		local b1, b2 = chg("bdx", BX, 0.2), chg("bdy", BY, 0.2)
+		if b1 or b2 then
+			if bodyLbl then bodyLbl.Position = UDim2.fromOffset(20 + BX, textY + BY) end
+			btnRow.Position = UDim2.fromOffset(-BX, btnY - BY)
+		end
 	end)
 
 	tween(blocker, { BackgroundTransparency = 0.5 }, 0.25)
 	tween(root, { Position = UDim2.fromScale(0.5, 0.5) }, 0.5, Enum.EasingStyle.Quint)
+	tween(rootScale, { Scale = s }, 0.55, Enum.EasingStyle.Back)
 	tween(card, { GroupTransparency = 0 }, 0.22)
 	tween(outStroke, { Transparency = 0 }, 0.25)
 	shadow:Fade(true, 0.4)
@@ -5654,6 +5860,15 @@ nt:AddButton({ Name = "Long Notification", Icon = "clock", Callback = function()
 		Content = "This is a fairly long piece of text used to check that the notification height adapts to its content and nothing gets cut off at the bottom.",
 		Duration = 6,
 	})
+end })
+nt:AddButton({ Name = "Success Notification", Icon = "check", ButtonText = "Success", Callback = function()
+	Library:Notify({ Title = "Saved", Content = "Your config was saved successfully.", Type = "success", Duration = 3.5 })
+end })
+nt:AddButton({ Name = "Warning Notification", Icon = "info", ButtonText = "Warning", Callback = function()
+	Library:Notify({ Title = "Heads up", Content = "This action may take a while.", Type = "warning", Duration = 3.5 })
+end })
+nt:AddButton({ Name = "Error Notification", Icon = "close", ButtonText = "Error", Callback = function()
+	Library:Notify({ Title = "Failed", Content = "Could not reach the server.", Type = "error", Duration = 3.5 })
 end })
 nt:AddButton({ Name = "Spam 3 Notifications", Icon = "plus", Callback = function()
 	for i = 1, 3 do
