@@ -1222,7 +1222,7 @@ local function rowLabel(row, text, width, shift)
 		Size = UDim2.new(width.X.Scale, width.X.Offset - shift - 12, width.Y.Scale, width.Y.Offset),
 		TextTruncate = Enum.TextTruncate.AtEnd, Parent = row,
 	})
-	fitLabel(lbl, 13, row.Size.Y.Offset * width.Y.Scale + width.Y.Offset)
+	fitLine(lbl, 13, 9)
 	return lbl
 end
 
@@ -1280,8 +1280,8 @@ end
 local function sideControl(box)
 	new("UISizeConstraint", { MinSize = Vector2.new(96, 24), MaxSize = Vector2.new(160, 24), Parent = box })
 end
-local SIDE_LABEL = UDim2.new(0.5, -18, 1, 0)
-local SIDE_BOX = UDim2.new(0.5, -10, 0, 24)
+local SIDE_LABEL = UDim2.new(0.55, -14, 1, 0)
+local SIDE_BOX = UDim2.new(0.45, -6, 0, 24)
 
 local function restElement() return Theme.Element end
 local function restHover() return Theme.Hover end
