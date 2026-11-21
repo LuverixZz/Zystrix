@@ -322,6 +322,11 @@ local Icons = {
 	copy = { "rbxassetid://78979572434545", "c" },
 	shield = { "rbxassetid://87354736164608", "S" },
 	hop = { "rbxassetid://132382786975101", ">" },
+	bell = { "rbxassetid://134341920489415", "N" },
+	warning = { "rbxassetid://99582861402895", "!" },
+	play = { "rbxassetid://133556938362507", ">" },
+	shuffle = { "rbxassetid://115812724786781", "~" },
+	compass = { "rbxassetid://76670154076632", "O" },
 }
 Library.Icons = Icons
 
@@ -842,7 +847,7 @@ do
 
 	local TONES = {
 		success = { Color3.fromRGB(64, 196, 108), "check", "SUCCESS" },
-		warning = { Color3.fromRGB(242, 178, 44), "info", "WARNING" },
+		warning = { Color3.fromRGB(242, 178, 44), "warning", "WARNING" },
 		error = { Color3.fromRGB(228, 70, 80), "close", "ERROR" },
 	}
 
@@ -5705,7 +5710,7 @@ local Overview = Window:AddTab({
 })
 local about = Overview:AddSection({ Name = "About", Icon = "info", Side = "Left" })
 about:AddLabel({ Title = "ZystrixUI Tester", Text = "Pick a tab in the sidebar to test switches, sliders, inputs, dropdowns, keybinds, buttons, layout, checkboxes, radios, chips, steppers, progress bars, color pickers and the live console." })
-about:AddButton({ Name = "Test Notification", Icon = "info", Style = "Primary", Callback = function()
+about:AddButton({ Name = "Test Notification", Icon = "bell", Style = "Primary", Callback = function()
 	Library:Notify({ Title = "Tester", Content = "Notification shown at " .. stamp(), Icon = "info" })
 end })
 
@@ -5892,7 +5897,7 @@ counterBtn = bt:AddButton({ Name = "Clicked: 0", Icon = "plus", Callback = funct
 end })
 
 local nt = Buttons:AddSection({ Name = "Notifications", Icon = "info", Side = "Right" })
-nt:AddButton({ Name = "Short Notification", Icon = "info", Callback = function()
+nt:AddButton({ Name = "Short Notification", Icon = "bell", Callback = function()
 	Library:Notify({ Title = "Short", Content = "Hello!", Duration = 3 })
 end })
 nt:AddButton({ Name = "Long Notification", Icon = "clock", Callback = function()
@@ -5905,13 +5910,13 @@ end })
 nt:AddButton({ Name = "Success Notification", Icon = "check", ButtonText = "Success", Callback = function()
 	Library:Notify({ Title = "Saved", Content = "Your config was saved successfully.", Type = "success", Duration = 3.5 })
 end })
-nt:AddButton({ Name = "Warning Notification", Icon = "info", ButtonText = "Warning", Callback = function()
+nt:AddButton({ Name = "Warning Notification", Icon = "warning", ButtonText = "Warning", Callback = function()
 	Library:Notify({ Title = "Heads up", Content = "This action may take a while.", Type = "warning", Duration = 3.5 })
 end })
 nt:AddButton({ Name = "Error Notification", Icon = "close", ButtonText = "Error", Callback = function()
 	Library:Notify({ Title = "Failed", Content = "Could not reach the server.", Type = "error", Duration = 3.5 })
 end })
-nt:AddButton({ Name = "Spam 3 Notifications", Icon = "plus", Callback = function()
+nt:AddButton({ Name = "Spam 3 Notifications", Icon = "bell", Callback = function()
 	for i = 1, 3 do
 		task.delay((i - 1) * 0.25, function()
 			Library:Notify({ Title = "Notification " .. i, Content = "Sent at " .. stamp(), Duration = 3 })
@@ -6055,14 +6060,14 @@ do
 			end
 		end)
 	end
-	pg:AddButton({ Name = "Run Progress", Icon = "bolt", Style = "Primary", Callback = runProgress })
+	pg:AddButton({ Name = "Run Progress", Icon = "play", Style = "Primary", Callback = runProgress })
 	pg:AddButton({ Name = "Reset Progress", Icon = "refresh", ButtonText = "Reset", Callback = function()
 		runId += 1
 		prog:Set(0)
 	end })
 	pg:AddDivider("Static")
 	local staticBar = pg:AddProgress({ Name = "Loaded", Icon = "server", Default = 65 })
-	pg:AddButton({ Name = "Random Value", Icon = "refresh", ButtonText = "Roll", Callback = function()
+	pg:AddButton({ Name = "Random Value", Icon = "shuffle", ButtonText = "Roll", Callback = function()
 		staticBar:Set(math.random(0, 100))
 	end })
 
@@ -6105,7 +6110,7 @@ do
 	lg:AddButton({ Name = "Log Success", Icon = "check", ButtonText = "Add", Callback = function()
 		log:Log("Operation completed at " .. stamp(), "ok")
 	end })
-	lg:AddButton({ Name = "Log Warning", Icon = "bolt", ButtonText = "Add", Callback = function()
+	lg:AddButton({ Name = "Log Warning", Icon = "warning", ButtonText = "Add", Callback = function()
 		log:Log("Something looks unusual at " .. stamp(), "warn")
 	end })
 	lg:AddButton({ Name = "Log Error", Icon = "close", ButtonText = "Add", Callback = function()
@@ -6136,7 +6141,7 @@ do
 		return flag:find("^UI_") ~= nil or flag:find("^X_") ~= nil
 	end
 
-	stt:AddButton({ Name = "Randomize All Flags", Icon = "refresh", ButtonText = "Run", Callback = function()
+	stt:AddButton({ Name = "Randomize All Flags", Icon = "shuffle", ButtonText = "Run", Callback = function()
 		local n = 0
 		for flag, ob in pairs(Library.Options) do
 			if not skip(flag) then
@@ -6211,7 +6216,7 @@ do
 		FX.burst(c, Theme.Accent, 14, 120 * s, { Size = 12 * s })
 	end })
 
-	stt:AddButton({ Name = "Notification Flood", Icon = "info", ButtonText = "Send", Callback = function()
+	stt:AddButton({ Name = "Notification Flood", Icon = "bell", ButtonText = "Send", Callback = function()
 		for i = 1, 6 do
 			task.delay((i - 1) * 0.15, function()
 				Library:Notify({ Title = "Flood " .. i, Content = "Queue test at " .. stamp(), Duration = 3, Icon = "info" })
@@ -6228,7 +6233,7 @@ do
 	end })
 
 	local touring = false
-	stt:AddButton({ Name = "Tour All Tabs", Icon = "grid", Style = "Primary", Callback = function()
+	stt:AddButton({ Name = "Tour All Tabs", Icon = "compass", Style = "Primary", Callback = function()
 		if touring then return end
 		touring = true
 		task.spawn(function()
