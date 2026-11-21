@@ -909,6 +909,12 @@ do
 		local face = new("Frame", { Size = UDim2.new(1, 0, 0, H), Bg = "Card", ZIndex = 3, Parent = mover })
 		corner(face, 10)
 		local fst = stroke(face)
+		gradient(face, 215)
+		local glowProps = { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 0.82, ZIndex = 1, Parent = face }
+		if tone then glowProps.BackgroundColor3 = tone else glowProps.Bg = "Accent" end
+		local glowF = new("Frame", glowProps)
+		corner(glowF, 10)
+		new("UIGradient", { Transparency = NumberSequence.new(0, 1), Rotation = 20, Parent = glowF })
 		new("Frame", {
 			Position = UDim2.fromOffset(10, 1), Size = UDim2.new(1, -20, 0, 1),
 			BackgroundColor3 = WHITE, BackgroundTransparency = 0.9, Parent = face,
@@ -4488,6 +4494,12 @@ function Library:Confirm(o)
 		Name = "Card", Size = UDim2.fromScale(1, 1), Bg = "Card", GroupTransparency = 1, Active = true, ZIndex = 1, Parent = faceBox,
 	})
 	corner(card, 16)
+	gradient(card, 225)
+	local glowProps = { Size = UDim2.fromScale(1, 1), BackgroundTransparency = danger and 0.86 or 0.82, ZIndex = 1, Parent = card }
+	if danger then glowProps.BackgroundColor3 = RED else glowProps.Bg = "Accent" end
+	local glowC = new("Frame", glowProps)
+	corner(glowC, 16)
+	new("UIGradient", { Transparency = NumberSequence.new(0, 1), Rotation = 20, Parent = glowC })
 	local outline = new("Frame", { Name = "Outline", Size = UDim2.fromScale(1, 1), ZIndex = 3, Active = false, Parent = faceBox })
 	corner(outline, 16)
 	local outStroke = stroke(outline)
