@@ -5284,46 +5284,35 @@ function Library:CreateWindow(opts)
 		local face = new("Frame", { Size = UDim2.new(1, 0, 0, PH), Bg = "Card", ZIndex = 5, Parent = root })
 		corner(face, 12)
 		stroke(face)
-		local faceGrad = gradient(face, 215)
-		local glowF = new("Frame", { Size = UDim2.fromScale(1, 1), Bg = "Accent", BackgroundTransparency = 0.84, Parent = face })
-		corner(glowF, 12)
-		new("UIGradient", { Transparency = NumberSequence.new(1, 0), Parent = glowF })
+		local faceGrad = gradient(face, 228)
 		new("Frame", {
-			Position = UDim2.fromOffset(10, 1), Size = UDim2.new(1, -20, 0, 1),
-			BackgroundColor3 = WHITE, BackgroundTransparency = 0.88, Parent = face,
-		})
-		local shine = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 0, ZIndex = 2, Parent = face })
-		corner(shine, 12)
-		local shineGrad = new("UIGradient", {
-			Rotation = 20, Offset = Vector2.new(-1, 0),
-			Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.38, 1),
-				NumberSequenceKeypoint.new(0.5, 0.86), NumberSequenceKeypoint.new(0.62, 1),
-				NumberSequenceKeypoint.new(1, 1),
-			}),
-			Parent = shine,
+			Position = UDim2.fromOffset(12, 1), Size = UDim2.new(1, -24, 0, 1),
+			BackgroundColor3 = WHITE, BackgroundTransparency = 0.9, Parent = face,
 		})
 
 		local tile, crown = iconTile(face, "crown", 26, 15, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 7, 0.5, 0) })
+		local keyW = IS_TOUCH and 0 or (math.ceil(textWidth(self.ToggleKey.Name, 10, FONT_BOLD)) + 14)
+		local textW = keyW > 0 and -(42 + keyW + 18) or -52
 		new("TextLabel", {
 			Text = ttl, Font = FONT_BOLD, TextSize = 12, Fg = "Text", Position = UDim2.fromOffset(42, 5),
-			Size = UDim2.new(1, -94, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, Parent = face,
+			Size = UDim2.new(1, textW, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, Parent = face,
 		})
-		local subLbl = new("TextLabel", {
-			Text = "", Font = Enum.Font.Code, TextSize = 9, Fg = "SubText", Position = UDim2.fromOffset(42, 21),
-			Size = UDim2.new(1, -94, 0, 11), TextTruncate = Enum.TextTruncate.AtEnd, Parent = face,
+		new("TextLabel", {
+			Text = IS_TOUCH and "Tap to open" or "Open menu", TextSize = 10, Fg = "SubText", Position = UDim2.fromOffset(42, 21),
+			Size = UDim2.new(1, textW, 0, 12), TextTruncate = Enum.TextTruncate.AtEnd, Parent = face,
 		})
-		local led = new("Frame", {
-			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -34, 0.5, 0), Size = UDim2.fromOffset(6, 6),
-			BackgroundColor3 = Theme.Accent, Parent = face,
-		})
-		round(led)
-		TweenService:Create(led, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { BackgroundTransparency = 0.65 }):Play()
-		local chev = makeIcon(face, "chevron", 12, "Accent", {
-			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Rotation = 0,
-		})
-
-		subLbl.Text = "OPEN MENU" .. ((not IS_TOUCH) and ("  /  " .. self.ToggleKey.Name) or "")
+		if keyW > 0 then
+			local cap = new("Frame", {
+				AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0),
+				Size = UDim2.fromOffset(keyW, 20), Bg = "Element", Parent = face,
+			})
+			corner(cap, 6)
+			stroke(cap)
+			new("TextLabel", {
+				Text = self.ToggleKey.Name, Font = FONT_BOLD, TextSize = 10, Fg = "SubText",
+				TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), Parent = cap,
+			})
+		end
 
 		Hooks[#Hooks + 1] = function(instant)
 			for i, f in ipairs(ext) do
@@ -5357,9 +5346,6 @@ function Library:CreateWindow(opts)
 				f.Position = UDim2.fromOffset(cx * 4.5 * ph * k, (i * THK / 3) * (1 + 0.4 * ph) * (1 - 0.75 * pp))
 			end
 			faceGrad.Rotation = 215 + cx * 28
-			local ph2 = (t % 4.2) / 4.2
-			shineGrad.Offset = Vector2.new(-1 + math.min(ph2 / 0.4, 1) * 2, 0)
-			chev.Position = UDim2.new(1, -12 + math.sin(t * 3.2) * 1.5, 0.5, 0)
 		end)
 
 		local appearTok = 0
