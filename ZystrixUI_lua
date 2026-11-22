@@ -1,19 +1,4 @@
---[[
-	ZystrixUI 2.3.0
-	What changed vs 2.1.0
-	  * One design system ("Library.Kit") for every floating surface: toast, dialog, dropdown, color picker, tooltip.
-	    Same slab/face/glow/stroke/shadow, same 3D coin badge, same mono tag, same 3D keys, same tone palette.
-	  * One tone palette (info / success / warning / error) used by Notify, Confirm, Log and Dashboard.
-	  * Notify: Actions buttons, Progress (value or indeterminate), update-in-place by Id, duplicate merging (x2, x3),
-	    6 screen positions, max-on-screen, quiet mode, history, handle:Update/SetProgress/Dismiss, OnClick, Persistent.
-	  * Confirm: queue instead of dropping, Library:Alert / Library:Prompt, validated text input, countdown lock for
-	    dangerous actions, "Don't ask again" (Remember), tone support, Enter/Esc hints.
-	  * Tooltips: any element accepts Tooltip = "..." (and TooltipTitle); Library:AddTooltip(gui, text, title).
-	  * Esc closes open dropdown / color picker. Delete Config now asks first.
-	  * Settings tab: new Notifications section (position, max, quiet mode, tooltips, preview, clear, history).
-]]
 if not game:IsLoaded() then game.Loaded:Wait() end
-
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -28,7 +13,6 @@ while not LocalPlayer do
 	Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
 	LocalPlayer = Players.LocalPlayer
 end
-
 local env = (getgenv and getgenv()) or _G
 if env.__MystrixUI then
 	pcall(function() env.__MystrixUI:Unload() end)
@@ -36,7 +20,6 @@ end
 if env.__ZystrixUI then
 	pcall(function() env.__ZystrixUI:Unload() end)
 end
-
 local BASE_W, BASE_H = 640, 400
 local HEADER_H, SIDEBAR_W, SEC_H = 46, 150, 40
 local CTRL_BTN, CTRL_SLOT = 36, 42
@@ -45,19 +28,19 @@ local TITLE_X = 54
 local TOG_SIZE = 40
 local FONT, FONT_BOLD = Enum.Font.GothamMedium, Enum.Font.GothamBold
 local ROOT = "ZystrixUI"
-
 local HasFS = (writefile and readfile and isfile and isfolder and makefolder) and true or false
-
 local AutoY, AutoX, AutoNone = Enum.AutomaticSize.Y, Enum.AutomaticSize.X, Enum.AutomaticSize.None
-
 local IS_TOUCH = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
-
 local USE_CANVAS_HIT = false
 local HIT_W = 120
 local TAP_SLOP = 18
 local onClick
 local DRAG_SLOP = IS_TOUCH and 16 or 6
-
+local MIN_W, MIN_H = 480, 300
+local MAX_W, MAX_H = 1280, 800
+local WinW, WinH = BASE_W, BASE_H
+local UserScale = 1
+local GRIP = IS_TOUCH and 30 or 22
 local Themes = {
 	Aurora = {
 		Background = Color3.fromRGB(9, 10, 9), Sidebar = Color3.fromRGB(13, 14, 13),
@@ -116,28 +99,22 @@ local Themes = {
 		Accent = Color3.fromRGB(245, 158, 11), AccentText = Color3.fromRGB(24, 14, 0),
 	},
 }
-
 for _, t in pairs(Themes) do
 	t.Soft = t.Element:Lerp(t.Accent, 0.16)
 end
-
 local Theme = {}
 for k, v in pairs(Themes.Aurora) do Theme[k] = v end
-
 local Library = {
 	Flags = {}, Options = {}, Connections = {}, Windows = {},
-	Version = "2.3.0", ThemeName = "Aurora",
+	Version = "3.0.0", ThemeName = "Aurora",
 	ThemeList = { "Aurora", "Monochrome", "Crimson", "Ocean", "Emerald", "Violet", "Amber", "Daylight" },
 	Transparency = 0, ConfigFolder = ROOT, Listening = false,
 	Effects = true,
 	Background = { Name = "Aurora", Intensity = 1 },
 	BackgroundList = { "Aurora", "Grid", "Particles", "None" },
 }
-
 local SliderLock = { Active = nil }
-
 local Bound, Hooks, TransFrames = {}, {}, {}
-
 local function connect(signal, fn)
 	local c = signal:Connect(fn)
 	local sink = Library._sink
@@ -148,32 +125,26 @@ local function connect(signal, fn)
 	end
 	return c
 end
-
 local function tween(obj, props, time, style, dir)
 	local t = TweenService:Create(obj, TweenInfo.new(time or 0.2, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out), props)
 	t:Play()
 	return t
 end
-
 local function snap(v, step)
 	return math.floor(v / step + 0.5) * step
 end
-
 local function toScreen(p)
 	return Vector2.new(p.X, p.Y + GuiService:GetGuiInset().Y)
 end
-
 local function bind(obj, prop, key)
 	obj[prop] = Theme[key]
 	Bound[#Bound + 1] = { obj, prop, key }
 end
-
 local function prune()
 	for i = #Bound, 1, -1 do
 		if not Bound[i][1].Parent then table.remove(Bound, i) end
 	end
 end
-
 local function new(class, props)
 	props = props or {}
 	local o = Instance.new(class)
@@ -207,15 +178,12 @@ local function new(class, props)
 	if parent then o.Parent = parent end
 	return o
 end
-
 local function corner(p, r)
 	return new("UICorner", { CornerRadius = UDim.new(0, r), Parent = p })
 end
-
 local function round(p)
 	return new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = p })
 end
-
 local function hitZone(parent, props)
 	props = props or {}
 	local zone = new(USE_CANVAS_HIT and "CanvasGroup" or "Frame", {
@@ -226,25 +194,21 @@ local function hitZone(parent, props)
 	local btn = new("TextButton", { Size = UDim2.fromScale(1, 1), Parent = zone })
 	return btn, zone
 end
-
 local function stroke(p, key, thick)
 	return new("UIStroke", { Stk = key or "Stroke", Thickness = thick or 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = p })
 end
-
 local function padding(p, l, t, r, b)
 	return new("UIPadding", {
 		PaddingLeft = UDim.new(0, l or 0), PaddingTop = UDim.new(0, t or 0),
 		PaddingRight = UDim.new(0, r or l or 0), PaddingBottom = UDim.new(0, b or t or 0), Parent = p,
 	})
 end
-
 local function listLayout(p, pad, dir)
 	return new("UIListLayout", {
 		Padding = UDim.new(0, pad or 0), SortOrder = Enum.SortOrder.LayoutOrder,
 		FillDirection = dir or Enum.FillDirection.Vertical, Parent = p,
 	})
 end
-
 local function gradient(p, dark, rot)
 	local d = dark or 190
 	return new("UIGradient", {
@@ -252,7 +216,6 @@ local function gradient(p, dark, rot)
 		Rotation = rot or 90, Parent = p,
 	})
 end
-
 local function applyTheme(name, instant)
 	local t = Themes[name]
 	if not t then return end
@@ -269,11 +232,9 @@ local function applyTheme(name, instant)
 	end
 	for _, h in ipairs(Hooks) do pcall(h, instant) end
 end
-
 local function ensureFolder(path)
 	if HasFS and not isfolder(path) then pcall(makefolder, path) end
 end
-
 local function httpGet(url)
 	local req = (syn and syn.request) or (http and http.request) or http_request or request
 	if req then
@@ -284,7 +245,6 @@ local function httpGet(url)
 	if ok then return body end
 	return nil
 end
-
 local Icons = {
 	crown = { "rbxassetid://127843403295538", "*" },
 	home = { "rbxassetid://98755624629571", "H" },
@@ -343,15 +303,12 @@ local Icons = {
 	compass = { "rbxassetid://76670154076632", "O" },
 }
 Library.Icons = Icons
-
 local IconCache, Pending = {}, {}
-
 local function fetchAsset(source)
 	if source:find("^rbxassetid://") or source:find("^rbxasset://") then return source end
 	if tonumber(source) then return "rbxassetid://" .. source end
 	return nil
 end
-
 local function loadIcon(spec, cb)
 	if not spec or spec == "" then return end
 	local entry = Icons[spec]
@@ -370,11 +327,9 @@ local function loadIcon(spec, cb)
 		end
 	end)
 end
-
 function Library:RegisterIcon(name, source, glyph)
 	Icons[name] = { source, glyph or "*" }
 end
-
 local function makeIcon(parent, spec, size, key, props)
 	local p = { Size = UDim2.fromOffset(size, size), ImageTransparency = 1, ScaleType = Enum.ScaleType.Fit, Parent = parent }
 	if props then for k, v in pairs(props) do p[k] = v end end
@@ -400,22 +355,18 @@ local function makeIcon(parent, spec, size, key, props)
 	end)
 	return img
 end
-
 local function tintIcon(img, color, t)
 	tween(img, { ImageColor3 = color }, t or 0.2)
 	local g = img:FindFirstChild("Glyph")
 	if g then tween(g, { TextColor3 = color }, t or 0.2) end
 end
-
 local SHADOW_STEPS, SHADOW_STEP, SHADOW_ALPHA = IS_TOUCH and 3 or 6, IS_TOUCH and 8 or 4, IS_TOUCH and 0.075 or 0.045
-
 local function makeShadow(parent, radius, o)
 	o = o or {}
 	local steps = o.Steps or SHADOW_STEPS
 	local step = o.Step or SHADOW_STEP
 	local alpha = o.Alpha or SHADOW_ALPHA
 	local dy = o.Offset or 0
-
 	local holder = Instance.new("Frame")
 	holder.Name = "Shadow"
 	holder.BackgroundTransparency = 1
@@ -426,7 +377,6 @@ local function makeShadow(parent, radius, o)
 	holder.Size = UDim2.fromScale(1, 1)
 	holder.ZIndex = 0
 	holder.Parent = parent
-
 	local layers = {}
 	for i = steps, 1, -1 do
 		local grow = i * step
@@ -446,7 +396,6 @@ local function makeShadow(parent, radius, o)
 		layer.Parent = holder
 		layers[#layers + 1] = layer
 	end
-
 	local obj = { Holder = holder }
 	function obj:Set(visible)
 		for _, l in ipairs(layers) do
@@ -473,7 +422,6 @@ local function iconTile(parent, spec, tile, size, props, static)
 	})
 	return box, img, st
 end
-
 local Gui = new("ScreenGui", {
 	Name = "ZystrixUI_" .. HttpService:GenerateGUID(false):sub(1, 6), ResetOnSpawn = false,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling, IgnoreGuiInset = true, DisplayOrder = 1000,
@@ -482,21 +430,17 @@ if syn and syn.protect_gui then pcall(syn.protect_gui, Gui) end
 local okParent = pcall(function() Gui.Parent = (gethui and gethui()) or CoreGui end)
 if not okParent or not Gui.Parent then Gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 Library.Gui = Gui
-
 local ScaleObj, MainFrame
-
 local function getScale()
 	if MainFrame and MainFrame.AbsoluteSize.X > 0 then
-		return MainFrame.AbsoluteSize.X / BASE_W
+		return MainFrame.AbsoluteSize.X / math.max(WinW, 1)
 	end
 	return ScaleObj and ScaleObj.Scale or 1
 end
-
 local function closePopup()
 	local c = Library.OpenPopup
 	if c then Library.OpenPopup = nil c() end
 end
-
 local FX = {
 	Assets = {
 		glow = "rbxassetid://88172507927269",
@@ -507,13 +451,10 @@ local FX = {
 	Ready = true, Active = 0, MAX = IS_TOUCH and 18 or 40,
 }
 Library.FX = FX
-
 function FX.whenReady(fn)
 	pcall(fn)
 end
-
 local FxLayer = new("Frame", { Name = "Fx", Size = UDim2.fromScale(1, 1), ZIndex = 200, Parent = Gui })
-
 local function uiScale(obj)
 	local s, o = 1, obj
 	while o and o ~= Gui do
@@ -524,11 +465,9 @@ local function uiScale(obj)
 	end
 	return s
 end
-
 local function fxOn()
 	return Library.Effects ~= false and FX.Active < FX.MAX
 end
-
 local function fxShape(name, parent)
 	local asset = FX.Assets[name]
 	local inst
@@ -555,7 +494,6 @@ local function fxShape(name, parent)
 	inst.Parent = parent
 	return inst
 end
-
 local function fxSet(inst, v)
 	if inst:IsA("ImageLabel") then
 		inst.ImageTransparency = v
@@ -564,7 +502,6 @@ local function fxSet(inst, v)
 		if st then st.Transparency = v else inst.BackgroundTransparency = v end
 	end
 end
-
 local function fxFade(inst, v, time, style, dir)
 	if inst:IsA("ImageLabel") then
 		return tween(inst, { ImageTransparency = v }, time, style, dir)
@@ -573,7 +510,6 @@ local function fxFade(inst, v, time, style, dir)
 	if st then return tween(st, { Transparency = v }, time, style, dir) end
 	return tween(inst, { BackgroundTransparency = v }, time, style, dir)
 end
-
 local function fxTint(inst, c)
 	if inst:IsA("ImageLabel") then
 		inst.ImageColor3 = c
@@ -582,7 +518,6 @@ local function fxTint(inst, c)
 		if st then st.Color = c else inst.BackgroundColor3 = c end
 	end
 end
-
 local function life(inst, t, layer)
 	FX.Active += 1
 	task.delay(t, function()
@@ -593,7 +528,6 @@ local function life(inst, t, layer)
 		end
 	end)
 end
-
 local function layerOf(host, radius)
 	local l = host:FindFirstChild("FxLayer")
 	if not l then
@@ -612,7 +546,6 @@ local function layerOf(host, radius)
 	l.Visible = true
 	return l
 end
-
 function FX.ripple(host, pos, color, opts)
 	if not fxOn() or not host or not host.Parent then return end
 	opts = opts or {}
@@ -637,7 +570,6 @@ function FX.ripple(host, pos, color, opts)
 	tween(inst, { Size = UDim2.fromOffset(d, d) }, t, Enum.EasingStyle.Quart)
 	fxFade(inst, 1, t, Enum.EasingStyle.Quad)
 end
-
 function FX.shine(host, color, radius)
 	if not fxOn() or not host or not host.Parent then return end
 	local layer = host:IsA("CanvasGroup") and host or layerOf(host, radius or 8)
@@ -661,7 +593,6 @@ function FX.shine(host, color, radius)
 	life(bar, 0.65, layer)
 	tween(bar, { Position = UDim2.fromOffset(w + h, h / 2) }, 0.55, Enum.EasingStyle.Quint)
 end
-
 function FX.ring(center, color, from, to, time, a0)
 	if not fxOn() then return end
 	local inst = fxShape("ring", FxLayer)
@@ -675,7 +606,6 @@ function FX.ring(center, color, from, to, time, a0)
 	tween(inst, { Size = UDim2.fromOffset(to, to) }, time, Enum.EasingStyle.Quint)
 	fxFade(inst, 1, time, Enum.EasingStyle.Quad)
 end
-
 function FX.burst(center, color, count, dist, opts)
 	if not fxOn() then return end
 	opts = opts or {}
@@ -705,7 +635,6 @@ function FX.burst(center, color, count, dist, opts)
 		end)
 	end
 end
-
 local function fxScale(obj)
 	local u = obj:FindFirstChild("FxScale")
 	if not u then
@@ -715,17 +644,14 @@ local function fxScale(obj)
 	end
 	return u
 end
-
 function FX.scaleTo(obj, v, time, style, dir)
 	return tween(fxScale(obj), { Scale = v }, time or 0.2, style or Enum.EasingStyle.Quint, dir)
 end
-
 function FX.pop(obj, from, time)
 	local u = fxScale(obj)
 	u.Scale = from
 	tween(u, { Scale = 1 }, time or 0.45, Enum.EasingStyle.Back)
 end
-
 local function flashObj(obj, prop, hot, rest, up, down)
 	if Library.Effects == false then return end
 	up = up or 0.08
@@ -734,7 +660,6 @@ local function flashObj(obj, prop, hot, rest, up, down)
 		if obj.Parent then tween(obj, { [prop] = rest() }, down or 0.5, Enum.EasingStyle.Quad) end
 	end)
 end
-
 local function pressTrack(hit, onDown, onUp)
 	local st = { Pos = nil, Down = false }
 	connect(hit.InputBegan, function(i)
@@ -753,11 +678,9 @@ local function pressTrack(hit, onDown, onUp)
 	end)
 	return st
 end
-
 function Library:SetEffects(v)
 	Library.Effects = v and true or false
 end
-
 local function clampCenter(target, nx, ny, startPos)
 	local vp = Gui.AbsoluteSize
 	local w, h = target.AbsoluteSize.X, target.AbsoluteSize.Y
@@ -769,7 +692,6 @@ local function clampCenter(target, nx, ny, startPos)
 	if loY > hiY then loY = (loY + hiY) / 2 hiY = loY end
 	return math.clamp(nx, loX, hiX), math.clamp(ny, loY, hiY)
 end
-
 local function draggable(handle, target, onTap, opt)
 	opt = opt or {}
 	local dragging, moved, startIn, startPos = false, false, nil, nil
@@ -805,14 +727,11 @@ local function draggable(handle, target, onTap, opt)
 		end
 	end)
 end
-
 function Library:SetTheme(name) applyTheme(name, false) end
-
 function Library:SetTransparency(v)
 	Library.Transparency = v
 	for _, f in ipairs(TransFrames) do tween(f, { BackgroundTransparency = v }, 0.25) end
 end
-
 local function textWidth(text, size, font)
 	local ok, sz = pcall(function()
 		return TextService:GetTextSize(tostring(text), size, font or FONT, Vector2.new(10000, 100))
@@ -820,7 +739,6 @@ local function textWidth(text, size, font)
 	if ok and sz then return sz.X end
 	return #tostring(text) * size * 0.6
 end
-
 local function fitLine(lbl, maxSize, minSize, inset, fixedW)
 	lbl.TextWrapped = false
 	lbl.TextYAlignment = Enum.TextYAlignment.Center
@@ -840,19 +758,9 @@ local function fitLine(lbl, maxSize, minSize, inset, fixedW)
 	task.defer(refit)
 	return refit
 end
-
-------------------------------------------------------------------------
--- DESIGN SYSTEM ("Kit")
--- Every floating surface (toast, dialog, popup, tooltip) is built from the
--- same pieces so nothing looks like it came from a different library:
---   surface : slab base + face + tone glow + top highlight + stroke + shadow
---   badge   : 3D coin with icon          tag : mono caps label
---   key     : 3D button with hint pill   tone: one shared semantic palette
--- Inline controls (rows, tiles, section cards) stay flat on purpose.
-------------------------------------------------------------------------
 local Kit = {
 	Radius = { Tooltip = 8, Popup = 10, Toast = 12, Dialog = 16 },
-	Thick = { Tooltip = 3, Popup = 4, Toast = 5, Dialog = 8 },
+	Thick = { Tooltip = 3, Popup = 4, Toast = 5, Dialog = 8, Window = 6 },
 	Z = { Popup = 50, Toast = 90, Dialog = 100, Tooltip = 150 },
 	White = Color3.new(1, 1, 1),
 	Black = Color3.new(0, 0, 0),
@@ -867,8 +775,6 @@ local Kit = {
 }
 Library.Kit = Kit
 Library.Tones = Kit.Tones
-
--- returns color, icon, label, isTone  (no tone -> live theme accent)
 function Kit.tone(name)
 	local key = name ~= nil and string.lower(tostring(name)) or nil
 	if key and Kit.Alias[key] then key = Kit.Alias[key] end
@@ -876,13 +782,10 @@ function Kit.tone(name)
 	if t then return t.Color, t.Icon, t.Label, true end
 	return Theme.Accent, "info", "NOTICE", false
 end
-
 function Kit.onColor(c)
 	if (c.R * 0.299 + c.G * 0.587 + c.B * 0.114) > 0.55 then return Color3.fromRGB(10, 18, 10) end
 	return Kit.White
 end
-
--- click/tap helper that does not leak connections into Library.Connections
 function Kit.click(btn, fn, eager)
 	local last = 0
 	local function fire(pos)
@@ -915,11 +818,6 @@ function Kit.click(btn, fn, eager)
 		end
 	end)
 end
-
--- floating surface -----------------------------------------------------
--- o: Name Size Position AnchorPoint ZIndex Radius Thick Tone(Color3|nil) Glow
---    Canvas(bool: CanvasGroup face, fadeable) Clip(bool) Sink(bool) Shadow(false|table)
--- returns { Root, Base, Box, Face, Stroke, Shadow, GlowFrame, Outline }
 function Kit.surface(parent, o)
 	o = o or {}
 	local r = o.Radius or Kit.Radius.Popup
@@ -966,11 +864,10 @@ function Kit.surface(parent, o)
 	end
 	return s
 end
-
--- 3D coin badge: returns holder (center anchored), face, icon ----------
 function Kit.badge(parent, icon, color, size, props)
 	size = size or 32
 	local edge = math.max(3, math.floor(size * 0.09))
+	local br = math.max(7, math.floor(size * 0.3))
 	local holder = new("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(size, size + edge), Parent = parent,
 	})
@@ -981,9 +878,9 @@ function Kit.badge(parent, icon, color, size, props)
 		Name = "Edge", Position = UDim2.fromOffset(0, edge), Size = UDim2.fromOffset(size, size),
 		BackgroundColor3 = color:Lerp(Kit.Black, 0.5), Parent = holder,
 	})
-	round(e)
+	corner(e, br)
 	local f = new("Frame", { Name = "Coin", Size = UDim2.fromOffset(size, size), BackgroundColor3 = color, ZIndex = 2, Parent = holder })
-	round(f)
+	corner(f, br)
 	if size >= 40 then stroke(f, "Card", 2) end
 	local ic = makeIcon(f, icon, math.floor(size * 0.5), nil, {
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 3,
@@ -991,11 +888,9 @@ function Kit.badge(parent, icon, color, size, props)
 	tintIcon(ic, Kit.onColor(color), 0.01)
 	return holder, f, ic
 end
-
--- mono caps label --------------------------------------------------------
 function Kit.tag(parent, text, color, props)
 	local p = {
-		Text = string.upper(tostring(text)), Font = Enum.Font.Code, TextSize = 10, Size = UDim2.new(1, 0, 0, 12),
+		Text = string.upper(tostring(text)), Font = FONT_BOLD, TextSize = 10, Size = UDim2.new(1, 0, 0, 12),
 		TextTruncate = Enum.TextTruncate.AtEnd, Parent = parent,
 	}
 	if props then
@@ -1004,21 +899,24 @@ function Kit.tag(parent, text, color, props)
 	if color then p.TextColor3 = color:Lerp(Theme.Text, 0.3) else p.Fg = "SubText" end
 	return new("TextLabel", p)
 end
-
--- dotted separator -------------------------------------------------------
 function Kit.perf(parent, x, y, w)
-	local okC, cw = pcall(function()
-		return TextService:GetTextSize("- ", 10, Enum.Font.Code, Vector2.new(1000, 20)).X
-	end)
-	local unit = (okC and cw and cw > 0) and cw or 11
-	return new("TextLabel", {
-		Text = string.rep("- ", math.floor(w / unit)), Font = Enum.Font.Code, TextSize = 10, Fg = "SubText", TextTransparency = 0.55,
-		TextWrapped = false, ClipsDescendants = true, Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w, 12), Parent = parent,
+	local line = new("Frame", { Name = "Divider", Position = UDim2.fromOffset(x, y + 5), Size = UDim2.fromOffset(w, 2), Bg = "Stroke", Parent = parent })
+	round(line)
+	local glow = new("Frame", { Size = UDim2.fromScale(1, 1), Bg = "Accent", Parent = line })
+	round(glow)
+	new("UIGradient", {
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.25), NumberSequenceKeypoint.new(1, 1) }),
+		Parent = glow,
 	})
+	return line
 end
-
--- 3D key button ------------------------------------------------------------
--- o: Text W H Radius Thick TextSize Variant("neutral"|"primary") Color(Color3) Hint Position ZIndex
+function Kit.bevel(p, inset, noLow)
+	inset = inset or 8
+	new("Frame", { Name = "BevelHi", Position = UDim2.fromOffset(inset, 1), Size = UDim2.new(1, -inset * 2, 0, 1), BackgroundColor3 = Kit.White, BackgroundTransparency = 0.9, Parent = p })
+	if not noLow then
+		new("Frame", { Name = "BevelLo", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, inset, 1, 0), Size = UDim2.new(1, -inset * 2, 0, 2), BackgroundColor3 = Kit.Black, BackgroundTransparency = 0.8, Parent = p })
+	end
+end
 function Kit.key(parent, o)
 	local W, H, r, T = o.W or 96, o.H or 38, o.Radius or 11, o.Thick or 4
 	local neutral = o.Variant == "neutral"
@@ -1047,7 +945,6 @@ function Kit.key(parent, o)
 	corner(face, r)
 	if neutral then stroke(face) end
 	key.Face = face
-
 	local hint = o.Hint
 	local avail = W - 16 - (hint and 44 or 0)
 	local text = tostring(o.Text or "")
@@ -1060,11 +957,10 @@ function Kit.key(parent, o)
 	if neutral then lp.Fg = "Text" elseif tone then lp.TextColor3 = Kit.onColor(tone) else lp.Fg = "AccentText" end
 	local label = new("TextLabel", lp)
 	key.Label = label
-
 	if hint then
 		local hintCol = neutral and Theme.Text or (tone and Kit.onColor(tone) or Theme.AccentText)
 		local pill = new("TextLabel", {
-			Name = "Hint", Text = hint, Font = Enum.Font.Code, TextSize = 9, TextColor3 = hintCol, TextTransparency = 0.2,
+			Name = "Hint", Text = hint, Font = FONT_BOLD, TextSize = 9, TextColor3 = hintCol, TextTransparency = 0.2,
 			BackgroundColor3 = Kit.Black, BackgroundTransparency = 0.8, AnchorPoint = Vector2.new(1, 0.5),
 			Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(0, 16), AutomaticSize = AutoX,
 			TextXAlignment = Enum.TextXAlignment.Center, Parent = face,
@@ -1072,7 +968,6 @@ function Kit.key(parent, o)
 		corner(pill, 5)
 		padding(pill, 5, 0, 5, 0)
 	end
-
 	local hov = false
 	local function lift(y, t, style)
 		tween(face, { Position = UDim2.fromOffset(0, y) }, t, style or Enum.EasingStyle.Quint)
@@ -1092,7 +987,6 @@ function Kit.key(parent, o)
 		if key.Enabled then lift(T - 1, 0.05, Enum.EasingStyle.Quad) end
 	end)
 	face.MouseButton1Up:Connect(function() lift(hov and -1 or 0, 0.24, Enum.EasingStyle.Back) end)
-
 	function key:SetEnabled(v)
 		self.Enabled = v and true or false
 		tween(face, { BackgroundTransparency = self.Enabled and 0 or 0.6 }, 0.15)
@@ -1108,33 +1002,23 @@ function Kit.key(parent, o)
 	end
 	return key
 end
-
--- Esc closes the open popup (dropdown / color picker)
 connect(UserInputService.InputBegan, function(i)
 	if i.KeyCode == Enum.KeyCode.Escape and Library.OpenPopup and not Library._confirm then
 		closePopup()
 	end
 end)
-
-------------------------------------------------------------------------
--- TOOLTIPS: any element accepts Tooltip = "text" (and TooltipTitle)
--- Library:AddTooltip(guiObject, text, title) works on custom GUI too.
-------------------------------------------------------------------------
 Library.TooltipsEnabled = true
 function Library:SetTooltips(v) Library.TooltipsEnabled = v and true or false end
-
 function Kit.addTip(gui, text, title)
 	if not gui or text == nil or tostring(text) == "" then return end
 	Kit.Tips[#Kit.Tips + 1] = { Gui = gui, Text = tostring(text), Title = title ~= nil and tostring(title) or nil }
 end
 function Library:AddTooltip(gui, text, title) Kit.addTip(gui, text, title) end
-
 do
 	local DELAY = 0.45
 	local cur, since, shown = nil, 0, nil
 	local touch = nil
 	local linger = 0
-
 	local function hide(fast)
 		local s = shown
 		if not s then return end
@@ -1145,7 +1029,6 @@ do
 		if s.Shadow then s.Shadow:Fade(false, 0.1) end
 		task.delay(0.16, function() pcall(function() s.Root:Destroy() end) end)
 	end
-
 	local function show(tip, p)
 		hide(true)
 		local scale = getScale()
@@ -1191,7 +1074,6 @@ do
 		if s.Shadow then s.Shadow:Fade(true, 0.2) end
 		shown = s
 	end
-
 	local function visibleAt(g, p)
 		local o = g
 		while o and o ~= Gui do
@@ -1206,7 +1088,6 @@ do
 		end
 		return o == Gui
 	end
-
 	connect(UserInputService.InputBegan, function(i)
 		if i.UserInputType ~= Enum.UserInputType.Touch then return end
 		local p = toScreen(i.Position)
@@ -1226,7 +1107,6 @@ do
 			if shown then linger = 2.2 else cur = nil end
 		end
 	end)
-
 	local acc = 0
 	connect(RunService.Heartbeat, function(dt)
 		acc += dt
@@ -1282,16 +1162,6 @@ do
 		end
 	end)
 end
-
-------------------------------------------------------------------------
--- NOTIFICATIONS
--- Library:Notify({
---   Title, Content, Type = "info"|"success"|"warning"|"error", Icon, Tag,
---   Duration = 4 (Persistent = true stays), Actions = { {Text, Callback, Primary, Keep} },
---   Progress = 0..1 | true (indeterminate), Id = "key" (update in place),
---   Stack = false (disable duplicate merging), OnClick = function, Important = true
--- }) -> handle { Dismiss(), Update({...}), SetProgress(v), Id }
-------------------------------------------------------------------------
 do
 	local NOTIFY_W, NOTIFY_OFF = 292, 380
 	local TEXT_X = 58
@@ -1299,7 +1169,6 @@ do
 	local THICK = Kit.Thick.Toast
 	local RAD = Kit.Radius.Toast
 	local WHITE, BLACK = Kit.White, Kit.Black
-
 	local PLACES = {
 		BottomRight = { anchor = Vector2.new(1, 1), pos = UDim2.new(1, -16, 1, -20), h = Enum.HorizontalAlignment.Right, v = Enum.VerticalAlignment.Bottom, dx = 1, dy = 0, order = 1 },
 		BottomLeft = { anchor = Vector2.new(0, 1), pos = UDim2.new(0, 16, 1, -20), h = Enum.HorizontalAlignment.Left, v = Enum.VerticalAlignment.Bottom, dx = -1, dy = 0, order = 1 },
@@ -1314,12 +1183,10 @@ do
 	Library.NotifyQuiet = false
 	Library.NotifyHistory = {}
 	Library.NotifyListeners = {}
-
 	local holder = new("Frame", {
 		Name = "Notifications", Size = UDim2.fromOffset(NOTIFY_W, 520), ZIndex = Kit.Z.Toast, Parent = Gui,
 	})
 	local list = new("UIListLayout", { Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder, Parent = holder })
-
 	local function place() return PLACES[Library.NotifyPosition] or PLACES.BottomRight end
 	local function applyPlace()
 		local p = place()
@@ -1329,7 +1196,6 @@ do
 		list.HorizontalAlignment = p.h
 	end
 	applyPlace()
-
 	function Library:SetNotifyPosition(name)
 		if not PLACES[name] then return end
 		Library.NotifyPosition = name
@@ -1337,21 +1203,17 @@ do
 	end
 	function Library:SetNotifyMax(n) Library.NotifyMax = math.clamp(math.floor(tonumber(n) or 4), 1, 8) end
 	function Library:SetNotifyQuiet(v) Library.NotifyQuiet = v and true or false end
-
 	local toasts, serial = {}, 0
-
 	function Library:ClearNotifications()
 		for i = #toasts, 1, -1 do
 			local t = toasts[i]
 			if t then t.Dismiss() end
 		end
 	end
-
 	local function spr(s, target, dt)
 		s.v += ((target - s.x) * 150 - s.v * 17) * dt
 		s.x += s.v * dt
 	end
-
 	local function bodyHeight(txt)
 		if txt == "" then return 0 end
 		local okS, sz = pcall(function()
@@ -1359,7 +1221,6 @@ do
 		end)
 		return (okS and sz) and (math.ceil(sz.Y) + 2) or (math.ceil(#txt / 32) * 15 + 2)
 	end
-
 	local function restack()
 		local n = #toasts
 		local p = place()
@@ -1375,7 +1236,6 @@ do
 			end
 		end
 	end
-
 	local function record(o, label)
 		local entry = {
 			Time = os.time(), Title = tostring(o.Title or "Notification"), Content = tostring(o.Content or ""),
@@ -1386,14 +1246,11 @@ do
 		if #h > 100 then table.remove(h, 1) end
 		for _, fn in ipairs(Library.NotifyListeners) do pcall(fn, entry) end
 	end
-
 	local NOOP = { Dismiss = function() end, Update = function() end, SetProgress = function() end }
-
 	function Library:Notify(o)
 		if type(o) ~= "table" then o = { Content = tostring(o or "") } end
 		local color, tIcon, tLabel, isTone = Kit.tone(o.Type)
 		record(o, isTone and tLabel or "info")
-
 		if o.Id then
 			for _, e in ipairs(toasts) do
 				if e.id == o.Id and not e.dead then
@@ -1402,12 +1259,10 @@ do
 				end
 			end
 		end
-
 		local dur = o.Persistent and 0 or (tonumber(o.Duration) or 4)
 		if Library.NotifyQuiet and dur ~= 0 and not o.Important and not (tLabel == "WARNING" or tLabel == "ERROR") then
 			return NOOP
 		end
-
 		local actions = {}
 		for _, a in ipairs(type(o.Actions) == "table" and o.Actions or {}) do
 			if #actions < 3 and type(a) == "table" then actions[#actions + 1] = a end
@@ -1422,10 +1277,8 @@ do
 				end
 			end
 		end
-
 		while #toasts >= math.max(1, Library.NotifyMax or 4) do toasts[1].Dismiss() end
 		serial += 1
-
 		local P = place()
 		local tone = isTone and color or nil
 		local icon = o.Icon or tIcon
@@ -1448,7 +1301,6 @@ do
 			H = math.max(62, cb + 14)
 		end
 		compute()
-
 		local offIn = UDim2.fromOffset(P.dx * NOTIFY_OFF, P.dy * 70)
 		local slot = new("Frame", { Size = UDim2.new(1, 0, 0, 0), LayoutOrder = serial * P.order, Parent = holder })
 		local surf = Kit.surface(slot, {
@@ -1457,12 +1309,10 @@ do
 		})
 		local mover, box, face, baseF = surf.Root, surf.Box, surf.Face, surf.Base
 		mover.Rotation = 6 * (P.dx == 0 and 1 or P.dx)
-
 		local timeProps = { Name = "Timer", Position = UDim2.fromOffset(0, THICK), Size = UDim2.new(1, 0, 0, H), ZIndex = 2, Parent = mover }
 		if tone then timeProps.BackgroundColor3 = tone else timeProps.Bg = "Accent" end
 		local timeBar = new("Frame", timeProps)
 		corner(timeBar, RAD)
-
 		local tagLbl = Kit.tag(face, tagText, tone, {
 			Position = UDim2.fromOffset(TEXT_X, 13), Size = UDim2.fromOffset(TEXT_W - 36, 12),
 		})
@@ -1481,14 +1331,12 @@ do
 			Position = UDim2.fromOffset(TEXT_X, 46), Size = UDim2.fromOffset(TEXT_W, math.max(bodyH, 1)), Visible = bodyH > 0, Parent = face,
 		})
 		local metaLbl = new("TextLabel", {
-			Text = "", Font = Enum.Font.Code, TextSize = 10, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 13),
+			Text = "", Font = FONT_BOLD, TextSize = 10, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 13),
 			Size = UDim2.fromOffset(40, 12), TextXAlignment = Enum.TextXAlignment.Right, Visible = false, Parent = face,
 		})
 		if tone then metaLbl.TextColor3 = tone:Lerp(Theme.Text, 0.3) else bind(metaLbl, "TextColor3", "Accent") end
-
 		local circleCol = tone or Theme.Accent
 		local badge, bFace, bIcon = Kit.badge(face, icon, circleCol, 32, { Position = UDim2.fromOffset(30, 31) })
-
 		local track, fill, fillLoop
 		local function setProgress(v)
 			if not fill then return end
@@ -1520,7 +1368,6 @@ do
 			fill = new("Frame", fp)
 			round(fill)
 		end
-
 		local entry = {
 			mover = mover, dim = nil, depth = 0, dead = false, hover = false, ready = false,
 			id = o.Id, sig = sig, count = 1,
@@ -1531,7 +1378,6 @@ do
 		local fillTw, loop
 		local dismiss, startTimer
 		local handle = {}
-
 		local dim = new("Frame", {
 			Name = "Dim", Size = UDim2.new(1, 0, 0, H), BackgroundColor3 = BLACK, BackgroundTransparency = 1, ZIndex = 5, Parent = mover,
 		})
@@ -1540,7 +1386,6 @@ do
 		local hit = new("TextButton", {
 			Name = "Tap", Size = UDim2.new(1, 0, 0, actY and (actY - 2) or H), ZIndex = 6, Parent = mover,
 		})
-
 		local keys = {}
 		if #actions > 0 then
 			local gap = 8
@@ -1581,7 +1426,6 @@ do
 				x += w + gap
 			end
 		end
-
 		local function layout(animate)
 			compute()
 			mover.Size = UDim2.new(1, 0, 0, H)
@@ -1597,7 +1441,6 @@ do
 			end
 		end
 		layout(false)
-
 		local function wake()
 			if loop or entry.dead or not entry.ready then return end
 			loop = RunService.RenderStepped:Connect(function(dt)
@@ -1636,7 +1479,6 @@ do
 				end
 			end)
 		end
-
 		function dismiss()
 			if entry.dead then return end
 			entry.dead = true
@@ -1665,7 +1507,6 @@ do
 			end)
 		end
 		entry.Dismiss = dismiss
-
 		function startTimer(seconds)
 			if fillTw then
 				pcall(function() fillTw:Cancel() end)
@@ -1682,7 +1523,6 @@ do
 				if entry.hover then mine:Pause() end
 			end
 		end
-
 		hit.InputBegan:Connect(function(i)
 			local ty = i.UserInputType
 			if ty ~= Enum.UserInputType.MouseButton1 and ty ~= Enum.UserInputType.Touch then return end
@@ -1726,7 +1566,6 @@ do
 				wake()
 			end)
 		end
-
 		local function recolor(typeName)
 			local c, ic, lbl, tn = Kit.tone(typeName)
 			local newTone = tn and c or nil
@@ -1743,7 +1582,6 @@ do
 			if tn then tagLbl.Text = lbl end
 			return ic
 		end
-
 		function handle:Dismiss() dismiss() end
 		function handle:SetProgress(v) setProgress(v) end
 		function handle:Update(u)
@@ -1787,7 +1625,6 @@ do
 		end
 		handle.Id = o.Id
 		entry.handle = handle
-
 		function entry.bump(seconds)
 			entry.count += 1
 			metaLbl.Text = "x" .. entry.count
@@ -1796,7 +1633,6 @@ do
 			FX.pop(badge, 0.75, 0.3)
 			if entry.ready then startTimer(seconds) end
 		end
-
 		table.insert(toasts, entry)
 		restack()
 		tween(slot, { Size = UDim2.new(1, 0, 0, H + THICK) }, 0.38, Enum.EasingStyle.Quint)
@@ -1818,13 +1654,11 @@ do
 			restack()
 			if st.hover or st.press then wake() end
 		end)
-
 		if hasProgress then setProgress(o.Progress) end
 		startTimer(dur)
 		return handle
 	end
 end
-
 function Library:ListConfigs()
 	local list = {}
 	if not (HasFS and listfiles) then return list end
@@ -1837,7 +1671,6 @@ function Library:ListConfigs()
 	table.sort(list)
 	return list
 end
-
 function Library:SaveConfig(name)
 	if not HasFS then return false end
 	name = tostring(name or ""):gsub("[^%w_%- ]", "")
@@ -1863,7 +1696,6 @@ function Library:SaveConfig(name)
 	end)
 	return ok, name
 end
-
 function Library:LoadConfig(name)
 	if not HasFS or not name then return false end
 	local path = Library.ConfigFolder .. "/configs/" .. name .. ".json"
@@ -1886,7 +1718,6 @@ function Library:LoadConfig(name)
 	pcall(writefile, Library.ConfigFolder .. "/last.txt", name)
 	return true
 end
-
 function Library:Unload()
 	if SliderLock.Active then pcall(SliderLock.Active) end
 	for _, c in ipairs(Library.Connections) do pcall(function() c:Disconnect() end) end
@@ -1894,15 +1725,12 @@ function Library:Unload()
 	pcall(function() Gui:Destroy() end)
 	env.__ZystrixUI = nil
 end
-
 local Section = {}
 Section.__index = Section
-
 function Section:_next()
 	self.Order += 1
 	return self.Order
 end
-
 local function register(obj, o)
 	obj.Flag = o.Flag
 	if o.Flag then
@@ -1910,23 +1738,20 @@ local function register(obj, o)
 		Library.Flags[o.Flag] = obj.Value
 	end
 end
-
 local function fire(obj, o)
 	if obj.Flag then Library.Flags[obj.Flag] = obj.Value end
 	if o.Callback then task.spawn(o.Callback, obj.Value) end
 	if obj.Flag and Library.OnFlagChanged then task.spawn(Library.OnFlagChanged, obj.Flag, obj.Value) end
 end
-
 local function quiet(obj)
 	if obj.Flag then Library.Flags[obj.Flag] = obj.Value end
 end
-
 local function makeRow(sec, height, bgKey)
 	local row = new("Frame", { Size = UDim2.new(1, 0, 0, height or 36), Bg = bgKey or "Element", LayoutOrder = sec:_next(), Parent = sec.Content })
-	corner(row, 8)
+	corner(row, 10)
+	Kit.bevel(row, 10)
 	return row
 end
-
 local function indexItem(sec, name, kind, row, icon, o)
 	if o and o.Tooltip then Kit.addTip(row, o.Tooltip, o.TooltipTitle) end
 	local tab = sec.Tab
@@ -1935,13 +1760,11 @@ local function indexItem(sec, name, kind, row, icon, o)
 		win:_register({ Name = name, Kind = kind, Tab = tab, Section = sec, Row = row, Icon = icon })
 	end
 end
-
 local function fitLabel(lbl, size, height)
 	lbl.TextSize = size
 	lbl.TextTruncate = Enum.TextTruncate.AtEnd
 	lbl.TextWrapped = height >= 30
 end
-
 local function rowLabel(row, text, width, shift)
 	shift = shift or 0
 	width = width or UDim2.new(1, -24, 1, 0)
@@ -1953,20 +1776,17 @@ local function rowLabel(row, text, width, shift)
 	fitLine(lbl, 13, 9)
 	return lbl
 end
-
 local function rowIcon(row, spec, cy)
 	if not spec then return 0 end
 	local pos = cy and UDim2.new(0, 12, 0, cy) or UDim2.new(0, 12, 0.5, 0)
 	makeIcon(row, spec, 16, "SubText", { AnchorPoint = Vector2.new(0, 0.5), Position = pos })
 	return 26
 end
-
 local function onHover(gui, enter, leave)
 	if IS_TOUCH then return end
 	connect(gui.MouseEnter, enter)
 	connect(gui.MouseLeave, leave)
 end
-
 function onClick(btn, fn, eager)
 	local last = 0
 	local function fire(pos)
@@ -2004,21 +1824,17 @@ local function hoverRow(row, hit, key)
 		function() tween(row, { BackgroundColor3 = Theme.Hover }, 0.15) end,
 		function() tween(row, { BackgroundColor3 = Theme[key or "Element"] }, 0.2) end)
 end
-
 local function sideControl(box)
 	new("UISizeConstraint", { MinSize = Vector2.new(96, 24), MaxSize = Vector2.new(160, 24), Parent = box })
 end
 local SIDE_LABEL = UDim2.new(0.55, -14, 1, 0)
 local SIDE_BOX = UDim2.new(0.45, -6, 0, 24)
-
 local function restElement() return Theme.Element end
 local function restHover() return Theme.Hover end
-
 function Section:AddToggle(o)
 	local row = makeRow(self, 40)
 	indexItem(self, o.Name, "Toggle", row, o.Icon, o)
 	rowLabel(row, o.Name, UDim2.new(1, -68, 1, 0), rowIcon(row, o.Icon))
-
 	local PW, PH, KS, PAD = 46, 24, 18, 3
 	local pill = new("Frame", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(PW, PH),
@@ -2038,11 +1854,9 @@ function Section:AddToggle(o)
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(0, 0),
 		ImageTransparency = 1, Img = "Accent", Parent = knob,
 	})
-
 	local hit = hitZone(row, {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.fromOffset(HIT_W, 40),
 	})
-
 	local obj = { Type = "Toggle", Value = o.Default and true or false }
 	local tok, halo = 0, nil
 	local function kx(on) return on and (PW - PAD - KS) or PAD end
@@ -2090,7 +1904,6 @@ function Section:AddToggle(o)
 		tween(pst, { Color = on and Theme.Accent or Theme.Stroke }, t)
 		tween(knob, { BackgroundColor3 = on and Theme.AccentText or Theme.SubText }, t)
 	end
-
 	local function flashHalo(col, a0, time)
 		if Library.Effects == false or not FX.Assets.glow then return end
 		if not halo then
@@ -2103,7 +1916,6 @@ function Section:AddToggle(o)
 		halo.ImageTransparency = a0
 		tween(halo, { ImageTransparency = 1 }, time, Enum.EasingStyle.Quad)
 	end
-
 	local function play(on, click)
 		local s = pill.AbsoluteSize.X / PW
 		if s <= 0 then return end
@@ -2121,13 +1933,11 @@ function Section:AddToggle(o)
 			FX.ring(c, Theme.SubText, 44 * s, 15 * s, 0.4, 0.5)
 		end
 	end
-
 	onHover(hit,
 		function() FX.scaleTo(pill, 1.06, 0.18, Enum.EasingStyle.Back) end,
 		function() FX.scaleTo(pill, 1, 0.2) end)
 	connect(hit.MouseButton1Down, function() FX.scaleTo(pill, 0.92, 0.07) end)
 	connect(hit.MouseButton1Up, function() FX.scaleTo(pill, IS_TOUCH and 1 or 1.06, 0.4, Enum.EasingStyle.Back) end)
-
 	function obj:Set(v, silent, click)
 		v = v and true or false
 		local changed = v ~= self.Value
@@ -2143,13 +1953,11 @@ function Section:AddToggle(o)
 	register(obj, o)
 	return obj
 end
-
 function Section:AddSlider(o)
 	local min, max, inc = o.Min or 0, o.Max or 100, o.Increment or 1
 	local decimals = 0
 	local frac = tostring(inc):match("%.(%d+)")
 	if frac then decimals = #frac end
-
 	local row = makeRow(self, 48)
 	indexItem(self, o.Name, "Slider", row, o.Icon, o)
 	local sh = rowIcon(row, o.Icon, 17)
@@ -2178,7 +1986,6 @@ function Section:AddSlider(o)
 	round(knob)
 	gradient(knob, 190)
 	local hit = hitZone(row, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 24) })
-
 	local obj = { Type = "Slider", Value = min, Min = min, Max = max, Step = inc }
 	local fillTime, fillStyle = 0.08, Enum.EasingStyle.Quad
 	local halo
@@ -2196,22 +2003,18 @@ function Section:AddSlider(o)
 		if silent then quiet(self) else fire(self, o) end
 	end
 	function obj:Get() return self.Value end
-
 	local dragging, dragInput, stateCon = false, nil, nil
 	local scroll = self.Scroll
 	local scrollCon, lockPos = nil, nil
-
 	local function fromX(x)
 		local rel = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
 		local before = obj.Value
 		obj:Set(min + (max - min) * rel)
 		return before ~= obj.Value
 	end
-
 	local function knobCenter()
 		return Vector2.new(knob.AbsolutePosition.X + knob.AbsoluteSize.X / 2, knob.AbsolutePosition.Y + knob.AbsoluteSize.Y / 2)
 	end
-
 	local function ensureHalo()
 		if halo or not FX.Assets.glow then return halo end
 		halo = new("ImageLabel", {
@@ -2220,7 +2023,6 @@ function Section:AddSlider(o)
 		})
 		return halo
 	end
-
 	local function stop()
 		if not dragging then return end
 		dragging = false
@@ -2243,7 +2045,6 @@ function Section:AddSlider(o)
 		local s = uiScale(knob)
 		FX.ring(knobCenter(), Theme.Accent, 14 * s, 34 * s, 0.4, 0.4)
 	end
-
 	connect(hit.InputBegan, function(i)
 		if i.UserInputType ~= Enum.UserInputType.MouseButton1 and i.UserInputType ~= Enum.UserInputType.Touch then return end
 		if SliderLock.Active and SliderLock.Active ~= stop then SliderLock.Active() end
@@ -2278,7 +2079,6 @@ function Section:AddSlider(o)
 		local s = uiScale(knob)
 		FX.ring(knobCenter(), Theme.Accent, 12 * s, 38 * s, 0.45, 0.3)
 	end)
-
 	connect(UserInputService.InputChanged, function(i)
 		if not dragging or SliderLock.Active ~= stop or not dragInput then return end
 		if dragInput.UserInputType == Enum.UserInputType.Touch then
@@ -2292,7 +2092,6 @@ function Section:AddSlider(o)
 		end
 		fromX(i.Position.X)
 	end)
-
 	connect(UserInputService.InputEnded, function(i)
 		if not dragging or not dragInput then return end
 		if i == dragInput then
@@ -2301,7 +2100,6 @@ function Section:AddSlider(o)
 			stop()
 		end
 	end)
-
 	if o.Input ~= false then
 		connect(valueLbl.Focused, function()
 			tween(vst, { Color = Theme.Accent }, 0.15)
@@ -2323,7 +2121,6 @@ function Section:AddSlider(o)
 	register(obj, o)
 	return obj
 end
-
 function Section:AddDropdown(o)
 	local row = makeRow(self, 36)
 	indexItem(self, o.Name, "Dropdown", row, o.Icon, o)
@@ -2336,7 +2133,6 @@ function Section:AddDropdown(o)
 	local arrow = makeIcon(box, "chevron", 12, "SubText", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -7, 0.5, 0) })
 	local hit = hitZone(row, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.new(0.5, 0, 1, 0) })
 	hoverRow(row, hit)
-
 	local allowNone = o.AllowNone ~= false
 	local NONE_ITEM = {}
 	local obj = { Type = "Dropdown", Options = o.Options or {}, Value = nil }
@@ -2377,7 +2173,6 @@ function Section:AddDropdown(o)
 		quiet(self)
 		render()
 	end
-
 	local isOpen = false
 	local function open()
 		closePopup()
@@ -2393,7 +2188,6 @@ function Section:AddDropdown(o)
 		local w = size.X / scale
 		local h = math.min(n, 6) * 28 + 8
 		local up = (abs.Y + size.Y + 4 + h * scale) > Gui.AbsoluteSize.Y
-
 		local blocker = new("TextButton", { Size = UDim2.fromScale(1, 1), ZIndex = 50, Parent = Gui })
 		local pop = Kit.surface(Gui, {
 			Name = "DropdownPopup", AnchorPoint = Vector2.new(0, up and 1 or 0),
@@ -2449,7 +2243,6 @@ function Section:AddDropdown(o)
 		tween(popup, { Size = UDim2.fromOffset(w, h) }, 0.26, Enum.EasingStyle.Quint)
 		tween(arrow, { Rotation = 180 }, 0.4, Enum.EasingStyle.Back)
 		tween(bstroke, { Color = Theme.Accent }, 0.2)
-
 		local scrollCon
 		if self.Scroll then
 			scrollCon = self.Scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(closePopup)
@@ -2471,7 +2264,6 @@ function Section:AddDropdown(o)
 		flashObj(row, "BackgroundColor3", Theme.Element:Lerp(Theme.Accent, 0.12), restElement, 0.08, 0.4)
 		if isOpen then closePopup() else open() end
 	end)
-
 	local startValue = o.Default
 	if startValue == nil and not allowNone then startValue = obj.Options[1] end
 	obj:Set(startValue, true)
@@ -2479,13 +2271,11 @@ function Section:AddDropdown(o)
 	register(obj, o)
 	return obj
 end
-
 function Section:AddButton(o)
 	local primary = o.Style == "Primary"
 	local row = makeRow(self, primary and 38 or 40, primary and "Text" or "Element")
 	indexItem(self, o.Name, "Button", row, o.Icon, o)
-	local hit, target, lbl, iconImg
-
+	local hit, target, lbl, iconImg, edge
 	if primary then
 		gradient(row, 200)
 		target = row
@@ -2507,6 +2297,14 @@ function Section:AddButton(o)
 		local pw = hasText and math.clamp(math.max(want, hasIcon and 80 or 54), 54, 170) or 36
 		lbl = rowLabel(row, o.Name, UDim2.new(1, -(pw + 24), 1, 0))
 		fitLine(lbl, 13, 10)
+		edge = new("Frame", {
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 3), Size = UDim2.fromOffset(pw, 28),
+			BackgroundColor3 = Theme.Hover:Lerp(Kit.Black, 0.5), Parent = row,
+		})
+		corner(edge, 8)
+		Hooks[#Hooks + 1] = function(instant)
+			tween(edge, { BackgroundColor3 = Theme.Hover:Lerp(Kit.Black, 0.5) }, instant and 0 or 0.35)
+		end
 		target = new("Frame", {
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(pw, 28),
 			Bg = "Hover", Parent = row,
@@ -2533,21 +2331,37 @@ function Section:AddButton(o)
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.fromOffset(math.max(pw + 24, HIT_W), 40),
 		})
 	end
-
 	local function base() return primary and Theme.Text or Theme.Hover end
 	local function over() return primary and Theme.Text:Lerp(Theme.Background, 0.15) or Theme.Stroke end
+	local restPos = target.Position
+	local function lift(dy, t, style)
+		if primary then return end
+		tween(target, { Position = UDim2.new(restPos.X.Scale, restPos.X.Offset, restPos.Y.Scale, restPos.Y.Offset + dy) }, t, style)
+	end
 	onHover(hit,
-		function() tween(target, { BackgroundColor3 = over() }, 0.15) end,
-		function() tween(target, { BackgroundColor3 = base() }, 0.2) end)
+		function()
+			tween(target, { BackgroundColor3 = over() }, 0.15)
+			lift(-1, 0.12)
+		end,
+		function()
+			tween(target, { BackgroundColor3 = base() }, 0.2)
+			lift(0, 0.2)
+		end)
 	connect(hit.MouseButton1Down, function()
 		if IS_TOUCH then return end
 		tween(target, { BackgroundColor3 = over():Lerp(Theme.Background, 0.12) }, 0.06)
+		lift(2, 0.05, Enum.EasingStyle.Quad)
 	end)
 	connect(hit.MouseButton1Up, function()
 		if IS_TOUCH then return end
 		tween(target, { BackgroundColor3 = over() }, 0.2)
+		lift(-1, 0.25, Enum.EasingStyle.Back)
 	end)
 	onClick(hit, function(pos)
+		if IS_TOUCH then
+			lift(2, 0.05, Enum.EasingStyle.Quad)
+			task.delay(0.08, function() lift(0, 0.25, Enum.EasingStyle.Back) end)
+		end
 		FX.ripple(target, pos, primary and Theme.Background or Theme.Accent, { Radius = primary and 8 or 8, Alpha = primary and 0.78 or 0.8, Time = 0.55 })
 		if iconImg then FX.pop(iconImg, 1.45, 0.5) end
 		if primary then
@@ -2566,7 +2380,6 @@ function Section:AddButton(o)
 	end
 	return obj
 end
-
 function Section:AddTextbox(o)
 	local row = makeRow(self, 36)
 	indexItem(self, o.Name, "Textbox", row, o.Icon, o)
@@ -2617,7 +2430,6 @@ function Section:AddTextbox(o)
 	register(obj, o)
 	return obj
 end
-
 function Section:AddKeybind(o)
 	local row = makeRow(self, 36)
 	indexItem(self, o.Name, "Keybind", row, o.Icon, o)
@@ -2643,7 +2455,6 @@ function Section:AddKeybind(o)
 	connect(btn:GetPropertyChangedSignal("AbsoluteSize"), fitKeyLabel)
 	task.defer(fitKeyLabel)
 	local st = stroke(btn)
-
 	local obj = { Type = "Keybind", Value = nil }
 	local listening = false
 	local pulse
@@ -2717,7 +2528,6 @@ function Section:AddKeybind(o)
 	register(obj, o)
 	return obj
 end
-
 function Section:AddLabel(o)
 	if type(o) == "string" then o = { Title = o } end
 	local row = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Element", LayoutOrder = self:_next(), Parent = self.Content })
@@ -2752,7 +2562,6 @@ function Section:AddLabel(o)
 	return obj
 end
 Section.AddParagraph = Section.AddLabel
-
 function Section:AddDivider(text)
 	local row = new("Frame", { Size = UDim2.new(1, 0, 0, 18), LayoutOrder = self:_next(), Parent = self.Content })
 	new("Frame", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(1, 0, 0, 1), Bg = "Stroke", Parent = row })
@@ -2765,23 +2574,19 @@ function Section:AddDivider(text)
 		padding(l, 8, 0, 8, 0)
 	end
 end
-
 local LOG_COLORS = {
 	info = Kit.Tones.info.Color,
 	ok = Kit.Tones.success.Color, success = Kit.Tones.success.Color,
 	warn = Kit.Tones.warning.Color, warning = Kit.Tones.warning.Color,
 	err = Kit.Tones.error.Color, error = Kit.Tones.error.Color,
 }
-
 local function logEscape(s)
 	return (tostring(s):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
 end
-
 function Section:AddCheckbox(o)
 	local row = makeRow(self, 40)
 	indexItem(self, o.Name, "Checkbox", row, o.Icon, o)
 	rowLabel(row, o.Name, UDim2.new(1, -56, 1, 0), rowIcon(row, o.Icon))
-
 	local BS = 22
 	local box = new("Frame", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(BS, BS),
@@ -2796,16 +2601,13 @@ function Section:AddCheckbox(o)
 	})
 	local hit = hitZone(row)
 	hoverRow(row, hit)
-
 	local obj = { Type = "Checkbox", Value = o.Default and true or false }
-
 	local function paint(instant)
 		local on = obj.Value
 		local t = instant and 0 or 0.16
 		tween(box, { BackgroundColor3 = on and Theme.Accent or Theme.Hover }, t, Enum.EasingStyle.Quad)
 		tween(bst, { Color = on and Theme.Accent or Theme.Stroke }, t, Enum.EasingStyle.Quad)
 	end
-
 	local function render(instant)
 		local on = obj.Value
 		paint(instant)
@@ -2824,9 +2626,7 @@ function Section:AddCheckbox(o)
 			FX.pop(box, 0.9, 0.35)
 		end
 	end
-
 	Hooks[#Hooks + 1] = function(instant) paint(instant) end
-
 	local function play(on, click)
 		if not click then return end
 		FX.ripple(row, typeof(click) == "Vector2" and click or nil, Theme.Accent, { Radius = 8, Alpha = on and 0.8 or 0.9 })
@@ -2838,13 +2638,11 @@ function Section:AddCheckbox(o)
 			FX.burst(c, Theme.Accent, 4, 22 * s, { Size = 8 * s, Squash = 0.6 })
 		end
 	end
-
 	onHover(hit,
 		function() FX.scaleTo(box, 1.1, 0.18, Enum.EasingStyle.Back) end,
 		function() FX.scaleTo(box, 1, 0.2) end)
 	connect(hit.MouseButton1Down, function() FX.scaleTo(box, 0.86, 0.07) end)
 	connect(hit.MouseButton1Up, function() FX.scaleTo(box, IS_TOUCH and 1 or 1.1, 0.35, Enum.EasingStyle.Back) end)
-
 	function obj:Set(v, silent, click)
 		v = v and true or false
 		local changed = v ~= self.Value
@@ -2861,7 +2659,6 @@ function Section:AddCheckbox(o)
 	register(obj, o)
 	return obj
 end
-
 function Section:AddRadio(o)
 	local opts = o.Options or {}
 	local row = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Element", LayoutOrder = self:_next(), Parent = self.Content })
@@ -2870,13 +2667,10 @@ function Section:AddRadio(o)
 	local rl = listLayout(row, 2)
 	rl.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	indexItem(self, o.Name, "Radio", row, o.Icon, o)
-
 	local head = new("Frame", { Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 0, Parent = row })
 	rowLabel(head, o.Name, UDim2.new(1, -24, 1, 0), rowIcon(head, o.Icon))
-
 	local items = {}
 	local obj = { Type = "Radio", Options = opts, Value = nil }
-
 	local function paintColors(t)
 		for i, it in ipairs(items) do
 			local on = opts[i] == obj.Value
@@ -2884,7 +2678,6 @@ function Section:AddRadio(o)
 			tween(it.Label, { TextColor3 = on and Theme.Text or Theme.SubText }, t)
 		end
 	end
-
 	local function paint(instant)
 		for i, it in ipairs(items) do
 			local on = opts[i] == obj.Value
@@ -2892,9 +2685,7 @@ function Section:AddRadio(o)
 		end
 		paintColors(instant and 0 or 0.2)
 	end
-
 	Hooks[#Hooks + 1] = function(instant) paintColors(instant and 0 or 0.3) end
-
 	for i, name in ipairs(opts) do
 		local it = new("Frame", { Size = UDim2.new(1, -12, 0, 28), Bg = "Hover", BackgroundTransparency = 1, LayoutOrder = i, Parent = row })
 		corner(it, 7)
@@ -2924,7 +2715,6 @@ function Section:AddRadio(o)
 			end)
 		onClick(hit, function(pos) obj:Set(name, false, pos or true) end)
 	end
-
 	function obj:Set(v, silent, click)
 		local idx = v ~= nil and table.find(opts, v) or nil
 		if v ~= nil and not idx then return end
@@ -2945,13 +2735,11 @@ function Section:AddRadio(o)
 		if silent then quiet(self) else fire(self, o) end
 	end
 	function obj:Get() return self.Value end
-
 	if o.Default ~= nil and table.find(opts, o.Default) then obj.Value = o.Default end
 	paint(true)
 	register(obj, o)
 	return obj
 end
-
 function Section:AddSegmented(o)
 	local opts = o.Options or {}
 	local n = math.max(#opts, 1)
@@ -2959,17 +2747,14 @@ function Section:AddSegmented(o)
 	indexItem(self, o.Name, "Segmented", row, o.Icon, o)
 	local sh = rowIcon(row, o.Icon, 17)
 	rowLabel(row, o.Name, UDim2.new(1, -24, 0, 26), sh).Position = UDim2.fromOffset(12 + sh, 4)
-
 	local track = new("Frame", { Position = UDim2.fromOffset(10, 34), Size = UDim2.new(1, -20, 0, 26), Bg = "Hover", Parent = row })
 	corner(track, 8)
 	stroke(track)
 	local ind = new("Frame", { Position = UDim2.new(0, 2, 0, 2), Size = UDim2.new(1 / n, -4, 1, -4), Bg = "Accent", Parent = track })
 	corner(ind, 6)
 	gradient(ind, 200)
-
 	local obj = { Type = "Segmented", Options = opts, Value = nil }
 	local labels = {}
-
 	local function paintLabels(instant)
 		local t = instant and 0 or 0.22
 		for i, l in ipairs(labels) do
@@ -2977,7 +2762,6 @@ function Section:AddSegmented(o)
 			tween(l, { TextColor3 = on and Theme.AccentText or Theme.SubText }, t)
 		end
 	end
-
 	local function place(i, instant)
 		local pos = UDim2.new((i - 1) / n, 2, 0, 2)
 		if instant then
@@ -2990,9 +2774,7 @@ function Section:AddSegmented(o)
 			if ind.Parent then tween(ind, { Size = UDim2.new(1 / n, -4, 1, -4) }, 0.3, Enum.EasingStyle.Back) end
 		end)
 	end
-
 	Hooks[#Hooks + 1] = function(instant) paintLabels(instant) end
-
 	for i, name in ipairs(opts) do
 		local lbl = new("TextLabel", {
 			Text = tostring(name), Font = FONT_BOLD, TextSize = 11, TextColor3 = Theme.SubText, Position = UDim2.fromScale((i - 1) / n, 0),
@@ -3006,7 +2788,6 @@ function Section:AddSegmented(o)
 			function() paintLabels(false) end)
 		onClick(hit, function(pos) obj:Set(name, false, pos or true) end)
 	end
-
 	function obj:Set(v, silent, click)
 		local idx = v ~= nil and table.find(opts, v) or nil
 		if not idx then return end
@@ -3022,7 +2803,6 @@ function Section:AddSegmented(o)
 		if silent then quiet(self) else fire(self, o) end
 	end
 	function obj:Get() return self.Value end
-
 	local d = o.Default
 	if d == nil or not table.find(opts, d) then d = opts[1] end
 	obj.Value = d
@@ -3031,7 +2811,6 @@ function Section:AddSegmented(o)
 	register(obj, o)
 	return obj
 end
-
 function Section:AddChips(o)
 	local opts = o.Options or {}
 	local textService = game:GetService("TextService")
@@ -3040,7 +2819,6 @@ function Section:AddChips(o)
 	padding(row, 12, 9, 12, 11)
 	listLayout(row, 8)
 	indexItem(self, o.Name, "Chips", row, o.Icon, o)
-
 	local head = new("Frame", { Size = UDim2.new(1, 0, 0, 18), LayoutOrder = 1, Parent = row })
 	local sh = 0
 	if o.Icon then
@@ -3055,14 +2833,11 @@ function Section:AddChips(o)
 		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(46, 18), Fg = "SubText", TextSize = 11,
 		TextXAlignment = Enum.TextXAlignment.Right, Parent = head,
 	})
-
 	local wrap = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, LayoutOrder = 2, Parent = row })
 	local wl = listLayout(wrap, 6, Enum.FillDirection.Horizontal)
 	wl.Wraps = true
-
 	local sel, chips = {}, {}
 	local obj = { Type = "Chips", Options = opts, Value = {} }
-
 	local function collect()
 		local out = {}
 		for _, name in ipairs(opts) do
@@ -3070,23 +2845,19 @@ function Section:AddChips(o)
 		end
 		return out
 	end
-
 	local function paintChip(c, on, instant)
 		local t = instant and 0 or 0.2
 		tween(c.Frame, { BackgroundColor3 = on and Theme.Accent or Theme.Hover, TextColor3 = on and Theme.AccentText or Theme.SubText }, t)
 		tween(c.Stroke, { Color = on and Theme.Accent or Theme.Stroke }, t)
 	end
-
 	local function refreshCount()
 		counter.Text = tostring(#obj.Value) .. "/" .. tostring(#opts)
 	end
-
 	Hooks[#Hooks + 1] = function(instant)
 		for _, name in ipairs(opts) do
 			paintChip(chips[name], sel[name] and true or false, instant)
 		end
 	end
-
 	local function flip(name, pos)
 		sel[name] = (not sel[name]) or nil
 		local on = sel[name] and true or false
@@ -3097,7 +2868,6 @@ function Section:AddChips(o)
 		FX.ripple(f, pos, Theme.Accent, { Radius = 13, Alpha = 0.8, Time = 0.5 })
 		fire(obj, o)
 	end
-
 	for i, name in ipairs(opts) do
 		local text = tostring(name)
 		local w = textService:GetTextSize(text, 11, FONT_BOLD, Vector2.new(1000, 26)).X + 26
@@ -3114,7 +2884,6 @@ function Section:AddChips(o)
 				function() paintChip(chips[name], sel[name] and true or false, false) end)
 		onClick(hit, function(pos) flip(name, pos) end)
 	end
-
 	function obj:Set(v, silent)
 		sel = {}
 		if type(v) == "table" then
@@ -3130,28 +2899,23 @@ function Section:AddChips(o)
 		if silent then quiet(self) else fire(self, o) end
 	end
 	function obj:Get() return self.Value end
-
 	obj:Set(o.Default or {}, true)
 	register(obj, o)
 	return obj
 end
-
 function Section:AddStepper(o)
 	local min, max, step = o.Min or 0, o.Max or 100, o.Step or o.Increment or 1
 	local decimals = 0
 	local frac = tostring(step):match("%.(%d+)")
 	if frac then decimals = #frac end
-
 	local row = makeRow(self, 40)
 	indexItem(self, o.Name, "Stepper", row, o.Icon, o)
 	rowLabel(row, o.Name, UDim2.new(1, -114, 1, 0), rowIcon(row, o.Icon))
-
 	local grp = new("Frame", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(96, 28), Bg = "Hover", Parent = row })
 	corner(grp, 8)
 	stroke(grp)
 	local valBox = new("Frame", { Position = UDim2.fromOffset(26, 0), Size = UDim2.fromOffset(44, 28), ClipsDescendants = true, Parent = grp })
 	local valLbl = new("TextLabel", { Font = FONT_BOLD, Fg = "Text", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = valBox })
-
 	local function mini(x, glyph)
 		local b = new("Frame", { Position = UDim2.fromOffset(x, 2), Size = UDim2.fromOffset(24, 24), Bg = "Element", Parent = grp })
 		corner(b, 6)
@@ -3163,15 +2927,12 @@ function Section:AddStepper(o)
 	end
 	local minus, minusLbl, minusSc, minusHit = mini(2, "-")
 	local plus, plusLbl, plusSc, plusHit = mini(70, "+")
-
 	local obj = { Type = "Stepper", Value = min, Min = min, Max = max, Step = step }
 	local ready = false
-
 	local function limits()
 		tween(minusLbl, { TextTransparency = obj.Value <= min and 0.65 or 0 }, 0.15)
 		tween(plusLbl, { TextTransparency = obj.Value >= max and 0.65 or 0 }, 0.15)
 	end
-
 	function obj:Set(v, silent)
 		v = math.clamp(tonumber(v) or min, min, max)
 		v = math.floor((v - min) / step + 0.5) * step + min
@@ -3189,7 +2950,6 @@ function Section:AddStepper(o)
 		if silent then quiet(self) else fire(self, o) end
 	end
 	function obj:Get() return self.Value end
-
 	local function hold(hit, dir, btn, sc)
 		local token = 0
 		local st
@@ -3218,13 +2978,11 @@ function Section:AddStepper(o)
 	end
 	hold(minusHit, -1, minus, minusSc)
 	hold(plusHit, 1, plus, plusSc)
-
 	obj:Set(o.Default or min, true)
 	ready = true
 	register(obj, o)
 	return obj
 end
-
 function Section:AddProgress(o)
 	local min, max = o.Min or 0, o.Max or 100
 	local row = makeRow(self, 52)
@@ -3248,14 +3006,12 @@ function Section:AddProgress(o)
 		Parent = shine,
 	})
 	TweenService:Create(shine, TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut, -1, false, 0.3), { Position = UDim2.fromScale(1.1, 0) }):Play()
-
 	local obj = { Type = "Progress", Value = min }
 	local nv = Instance.new("NumberValue")
 	local tw
 	connect(nv.Changed, function(x)
 		pct.Text = string.format("%d%%", math.floor(x * 100 + 0.5))
 	end)
-
 	function obj:Set(v, instant)
 		v = math.clamp(tonumber(v) or min, min, max)
 		local old = self.Value
@@ -3281,16 +3037,13 @@ function Section:AddProgress(o)
 		end
 	end
 	function obj:Get() return self.Value end
-
 	obj:Set(o.Default or min, true)
 	return obj
 end
-
 function Section:AddColorPicker(o)
 	local row = makeRow(self, 40)
 	indexItem(self, o.Name, "Color", row, o.Icon, o)
 	rowLabel(row, o.Name, UDim2.new(1, -120, 1, 0), rowIcon(row, o.Icon))
-
 	local sw = new("Frame", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(90, 26),
 		BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0, Parent = row,
@@ -3303,18 +3056,15 @@ function Section:AddColorPicker(o)
 	})
 	local hit = hitZone(row)
 	hoverRow(row, hit)
-
 	local obj = { Type = "Color", Value = Color3.new(1, 1, 1) }
 	local h, s, v = 0, 0, 1
 	local refreshPopup
-
 	local function paint()
 		local c = obj.Value
 		tween(sw, { BackgroundColor3 = c }, 0.08, Enum.EasingStyle.Quad)
 		hexLbl.Text = "#" .. c:ToHex():upper()
 		hexLbl.TextColor3 = (c.R * 0.299 + c.G * 0.587 + c.B * 0.114) > 0.55 and Color3.new(0, 0, 0) or Color3.new(1, 1, 1)
 	end
-
 	local function apply(nh, ns, nv)
 		h, s, v = nh, ns, nv
 		obj.Value = Color3.fromHSV(h, s, v)
@@ -3322,7 +3072,6 @@ function Section:AddColorPicker(o)
 		if refreshPopup then refreshPopup() end
 		fire(obj, o)
 	end
-
 	function obj:Set(c, silent)
 		if type(c) == "string" then
 			local hx = c:gsub("#", "")
@@ -3337,7 +3086,6 @@ function Section:AddColorPicker(o)
 		if silent then quiet(self) else fire(self, o) end
 	end
 	function obj:Get() return self.Value end
-
 	local isOpen = false
 	local function open()
 		closePopup()
@@ -3348,7 +3096,6 @@ function Section:AddColorPicker(o)
 		local abs, size = sw.AbsolutePosition, sw.AbsoluteSize
 		local up = (abs.Y + size.Y + 6 + PH * scale) > Gui.AbsoluteSize.Y
 		local px = math.max(abs.X + size.X, PW * scale + 8)
-
 		local blocker = new("TextButton", { Size = UDim2.fromScale(1, 1), ZIndex = 50, Parent = Gui })
 		local pop = Kit.surface(Gui, {
 			Name = "ColorPopup", AnchorPoint = Vector2.new(1, up and 1 or 0), Position = UDim2.fromOffset(px, up and abs.Y - 6 or abs.Y + size.Y + 6),
@@ -3358,7 +3105,6 @@ function Section:AddColorPicker(o)
 		local popupRoot = pop.Root
 		local popup = pop.Face
 		new("UIScale", { Scale = scale, Parent = popupRoot })
-
 		local svBox = new("Frame", { Position = UDim2.fromOffset(10, 10), Size = UDim2.fromOffset(PW - 20, 100), BackgroundColor3 = Color3.fromHSV(h, 1, 1), Parent = popup })
 		corner(svBox, 6)
 		local white = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), Parent = svBox })
@@ -3373,7 +3119,6 @@ function Section:AddColorPicker(o)
 		})
 		round(cur)
 		new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = cur })
-
 		local hueBar = new("Frame", { Position = UDim2.fromOffset(10, 118), Size = UDim2.fromOffset(PW - 20, 12), BackgroundColor3 = Color3.new(1, 1, 1), Parent = popup })
 		round(hueBar)
 		local kps = {}
@@ -3387,7 +3132,6 @@ function Section:AddColorPicker(o)
 		})
 		corner(hueKnob, 4)
 		new("UIStroke", { Color = Color3.new(0, 0, 0), Transparency = 0.4, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = hueKnob })
-
 		local prev = new("Frame", { Position = UDim2.fromOffset(10, 142), Size = UDim2.fromOffset(26, 26), BackgroundColor3 = obj.Value, Parent = popup })
 		corner(prev, 7)
 		stroke(prev)
@@ -3398,7 +3142,6 @@ function Section:AddColorPicker(o)
 		})
 		corner(hexBox, 7)
 		local hst = stroke(hexBox)
-
 		local conns = {}
 		local function drag(area, fn)
 			local active = false
@@ -3420,7 +3163,6 @@ function Section:AddColorPicker(o)
 				end
 			end)
 		end
-
 		drag(hitZone(svBox, { ZIndex = 4 }), function(x, y)
 			local rx = math.clamp((x - svBox.AbsolutePosition.X) / math.max(svBox.AbsoluteSize.X, 1), 0, 1)
 			local ry = math.clamp((y - svBox.AbsolutePosition.Y) / math.max(svBox.AbsoluteSize.Y, 1), 0, 1)
@@ -3430,7 +3172,6 @@ function Section:AddColorPicker(o)
 			local rx = math.clamp((x - hueBar.AbsolutePosition.X) / math.max(hueBar.AbsoluteSize.X, 1), 0, 0.999)
 			apply(rx, s, v)
 		end)
-
 		conns[#conns + 1] = hexBox.Focused:Connect(function() tween(hst, { Color = Theme.Accent }, 0.2) end)
 		conns[#conns + 1] = hexBox.FocusLost:Connect(function()
 			tween(hst, { Color = Theme.Stroke }, 0.2)
@@ -3442,7 +3183,6 @@ function Section:AddColorPicker(o)
 				hexBox.Text = "#" .. obj.Value:ToHex():upper()
 			end
 		end)
-
 		refreshPopup = function()
 			svBox.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
 			cur.Position = UDim2.fromScale(s, 1 - v)
@@ -3451,11 +3191,9 @@ function Section:AddColorPicker(o)
 			prev.BackgroundColor3 = obj.Value
 			if not hexBox:IsFocused() then hexBox.Text = "#" .. obj.Value:ToHex():upper() end
 		end
-
 		tween(popupRoot, { Size = UDim2.fromOffset(PW, PH) }, 0.28, Enum.EasingStyle.Quint)
 		tween(sst, { Color = Theme.Accent }, 0.2)
 		FX.pop(cur, 0.3, 0.5)
-
 		local scrollCon
 		if self.Scroll then
 			scrollCon = self.Scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(closePopup)
@@ -3473,17 +3211,14 @@ function Section:AddColorPicker(o)
 		Library.OpenPopup = close
 		onClick(blocker, closePopup)
 	end
-
 	onClick(hit, function(pos)
 		FX.ripple(row, pos, Theme.Accent, { Radius = 8, Alpha = 0.85 })
 		if isOpen then closePopup() else open() end
 	end)
-
 	obj:Set(o.Default or Color3.fromRGB(255, 255, 255), true)
 	register(obj, o)
 	return obj
 end
-
 function Section:AddLog(o)
 	o = o or {}
 	local H = o.Height or 140
@@ -3493,13 +3228,11 @@ function Section:AddLog(o)
 	indexItem(self, title, "Log", row, o.Icon or "chat", o)
 	local sh = rowIcon(row, o.Icon or "chat", 17)
 	rowLabel(row, title, UDim2.new(1, -52, 0, 26), sh).Position = UDim2.fromOffset(12 + sh, 4)
-
 	local clr = new("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 6), Size = UDim2.fromOffset(28, 22), Bg = "Hover", Parent = row })
 	corner(clr, 6)
 	stroke(clr)
 	makeIcon(clr, "trash", 12, "SubText", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 	local clrHit = hitZone(clr, { ZIndex = 4 })
-
 	local box = new("Frame", { Position = UDim2.fromOffset(8, 32), Size = UDim2.new(1, -16, 0, H), Bg = "Card", Parent = row })
 	corner(box, 7)
 	stroke(box)
@@ -3508,10 +3241,8 @@ function Section:AddLog(o)
 	})
 	padding(sc, 8, 6, 8, 6)
 	listLayout(sc, 3)
-
 	local lines, serial = {}, 0
 	local obj = { Type = "Log" }
-
 	function obj:Log(text, kind)
 		kind = LOG_COLORS[kind or "info"] and (kind or "info") or "info"
 		serial += 1
@@ -3537,12 +3268,10 @@ function Section:AddLog(o)
 			tween(sc, { CanvasPosition = Vector2.new(0, maxY) }, 0.25, Enum.EasingStyle.Quad)
 		end)
 	end
-
 	function obj:Clear()
 		for _, l in ipairs(lines) do pcall(function() l:Destroy() end) end
 		lines = {}
 	end
-
 	onHover(clrHit,
 		function() tween(clr, { BackgroundColor3 = Theme.Stroke }, 0.12) end,
 		function() tween(clr, { BackgroundColor3 = Theme.Hover }, 0.18) end)
@@ -3551,18 +3280,14 @@ function Section:AddLog(o)
 		FX.ripple(clr, pos, Theme.Accent, { Radius = 6, Alpha = 0.8, Time = 0.4 })
 		obj:Clear()
 	end, true)
-
 	return obj
 end
-
 local Tab = {}
 Tab.__index = Tab
-
 function Tab:_next()
 	self.Order += 1
 	return self.Order
 end
-
 function Tab:AddSection(o)
 	o = o or {}
 	local right = o.Side == "Right"
@@ -3573,7 +3298,6 @@ function Tab:AddSection(o)
 		tween(self.Left, { Size = UDim2.new(0.5, -4, 0, 0) }, 0.3)
 	end
 	local col = right and self.Right or self.Left
-
 	local card = new("Frame", {
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, Bg = "Card", BackgroundTransparency = 0.1, LayoutOrder = self:_next(),
 		ClipsDescendants = true, Parent = col,
@@ -3582,8 +3306,8 @@ function Tab:AddSection(o)
 	stroke(card)
 	gradient(card, 225)
 	listLayout(card, 0)
-
 	local header = new("Frame", { Size = UDim2.new(1, 0, 0, SEC_H), LayoutOrder = 1, Parent = card })
+	new("Frame", { Name = "BevelHi", Position = UDim2.fromOffset(14, 1), Size = UDim2.new(1, -28, 0, 1), BackgroundColor3 = Kit.White, BackgroundTransparency = 0.9, Parent = header })
 	local hasIcon = o.Icon ~= nil
 	local lx = hasIcon and 44 or 12
 	local secBox
@@ -3601,21 +3325,17 @@ function Tab:AddSection(o)
 	onHover(hz,
 		function() tween(hzone, { BackgroundTransparency = 0.6 }, 0.15) end,
 		function() tween(hzone, { BackgroundTransparency = 1 }, 0.2) end)
-
 	local content = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AutoY, LayoutOrder = 2, ClipsDescendants = true, Parent = card })
 	padding(content, 8, 0, 8, 8)
 	local layout = listLayout(content, 5)
-
 	local sec = setmetatable({
 		Tab = self, Name = o.Name or "Section", Content = content, Scroll = self.Scroll, Order = 0,
 		Collapsed = o.Collapsed and true or false, _tok = 0,
 	}, Section)
-
 	if sec.Collapsed then
 		content.AutomaticSize = AutoNone
 		content.Size = UDim2.new(1, 0, 0, 0)
 	end
-
 	local function apply()
 		sec._tok += 1
 		local tok = sec._tok
@@ -3654,28 +3374,23 @@ function Tab:AddSection(o)
 	end
 	return sec
 end
-
 local Window = {}
 Window.__index = Window
-
 local function viewport()
 	local cam = workspace.CurrentCamera
 	return cam and cam.ViewportSize or Vector2.new(1280, 720)
 end
-
 local function fitScale()
 	local vp = viewport()
-	return math.min(1, vp.X * 0.85 / BASE_W, vp.Y * 0.88 / BASE_H)
+	local base = math.min(1, vp.X * 0.85 / BASE_W, vp.Y * 0.88 / BASE_H)
+	return math.clamp(base * UserScale, 0.3, 2)
 end
-
 local function maxScale()
 	local vp = viewport()
-	return math.min(2, vp.X * 0.97 / BASE_W, vp.Y * 0.95 / BASE_H)
+	return math.max(fitScale(), math.min(2, vp.X * 0.97 / WinW, vp.Y * 0.95 / WinH))
 end
-
 local PAGE_REST = UDim2.fromScale(0.5, 0.5)
 local TABCLIP_Y = 54
-
 local function relayoutSub(tab)
 	if not tab.SubFrame then return end
 	local n = 0
@@ -3695,14 +3410,12 @@ local function relayoutSub(tab)
 		end)
 	end
 end
-
 function Library._toggleSub(tab)
 	if #tab.Children == 0 then return end
 	tab.Expanded = not tab.Expanded
 	if tab.Chevron then tween(tab.Chevron, { Rotation = tab.Expanded and 180 or 0 }, 0.2, Enum.EasingStyle.Quint) end
 	relayoutSub(tab)
 end
-
 local function paintTab(tab, instant)
 	local t = instant and 0 or 0.1
 	local on = tab.Active
@@ -3714,7 +3427,6 @@ local function paintTab(tab, instant)
 		tintIcon(tab.Icon, on and Theme.AccentText or Theme.SubText, t)
 	end
 end
-
 function Window:_sub(parentTab)
 	if parentTab.SubFrame then return parentTab.SubFrame end
 	local sf = new("Frame", { Size = UDim2.new(1, 0, 0, 0), Visible = false, LayoutOrder = 2, ClipsDescendants = true, Parent = parentTab.Holder })
@@ -3726,12 +3438,10 @@ function Window:_sub(parentTab)
 	onClick(zh, function() Library._toggleSub(parentTab) end)
 	return sf
 end
-
 function Window:AddTab(opts)
 	opts = opts or {}
 	local parentTab = opts.Parent
 	local isSub = parentTab ~= nil
-
 	if not isSub and opts.Group and opts.Group ~= self.LastGroup then
 		self.LastGroup = opts.Group
 		self.TabOrder += 1
@@ -3739,7 +3449,6 @@ function Window:AddTab(opts)
 		padding(gl, 6, 8, 0, 0)
 		table.insert(self.GroupLabels, gl)
 	end
-
 	local tab = setmetatable({
 		Window = self, Name = opts.Name or "Tab", Children = {}, ParentTab = parentTab, Active = false, Order = 0,
 		Expanded = false, Index = #self.Tabs + 1,
@@ -3755,7 +3464,6 @@ function Window:AddTab(opts)
 		listLayout(tab.Holder, 3)
 		container, layoutOrder = tab.Holder, 1
 	end
-
 	local h = isSub and 28 or 34
 	local btn = new("TextButton", { Size = UDim2.new(1, 0, 0, h), Bg = "Soft", BackgroundTransparency = 1, LayoutOrder = layoutOrder, Parent = container })
 	corner(btn, 9)
@@ -3787,7 +3495,6 @@ function Window:AddTab(opts)
 	})
 	tab.Button, tab.Bar = btn, bar
 	Hooks[#Hooks + 1] = function() paintTab(tab, false) end
-
 	onHover(btn,
 		function()
 			if not tab.Active then tween(btn, { BackgroundTransparency = 0.72 }, 0.1) end
@@ -3809,7 +3516,6 @@ function Window:AddTab(opts)
 			end
 		end)
 	end)
-
 	if opts.NoPage ~= true then
 		local holder = new("CanvasGroup", {
 			AnchorPoint = Vector2.new(0.5, 0.5), Position = PAGE_REST, Size = UDim2.fromScale(1, 1),
@@ -3836,7 +3542,6 @@ function Window:AddTab(opts)
 		listLayout(right, 8)
 		tab.Page, tab.Scroll, tab.Left, tab.Right = holder, scroll, left, right
 	end
-
 	onClick(btn, function(pos)
 		FX.ripple(btn, pos, Theme.Accent, { Radius = 9, Alpha = 0.8, Time = 0.55 })
 		if tab.Page then
@@ -3845,20 +3550,17 @@ function Window:AddTab(opts)
 			Library._toggleSub(tab)
 		end
 	end)
-
 	self:_register({ Name = tab.Name, Kind = "Tab", Tab = tab, Icon = opts.Icon })
 	if isSub then relayoutSub(parentTab) end
 	table.insert(self.Tabs, tab)
 	if not self.Current and tab.Page then self:SelectTab(tab, true) end
 	return tab
 end
-
 function Tab:AddSubTab(opts)
 	opts = opts or {}
 	opts.Parent = self
 	return self.Window:AddTab(opts)
 end
-
 function Window:SelectTab(tab, instant)
 	if not tab.Page then return end
 	if self.SearchOpen then
@@ -3899,7 +3601,6 @@ function Window:SelectTab(tab, instant)
 		if tab.Scroll then tab.Scroll.CanvasPosition = Vector2.new(0, 0) end
 	end
 end
-
 local KIND_LABEL = {
 	Toggle = "Switch", Slider = "Slider", Dropdown = "Dropdown", Button = "Button", Textbox = "Input",
 	Keybind = "Keybind", Tab = "Tab", Section = "Section", Action = "Action", Card = "Card",
@@ -3914,11 +3615,9 @@ local KIND_ICON = {
 }
 local KIND_RANK = { Tab = 1, Section = 2, Card = 2, Action = 3 }
 local MAX_RESULTS = 40
-
 local function esc(s)
 	return (tostring(s):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
 end
-
 local function markMatch(name, token)
 	if not token or token == "" then return esc(name) end
 	local s, e = name:lower():find(token, 1, true)
@@ -3927,7 +3626,6 @@ local function markMatch(name, token)
 		.. '<font color="#' .. Theme.Accent:ToHex() .. '"><b>' .. esc(name:sub(s, e)) .. "</b></font>"
 		.. esc(name:sub(e + 1))
 end
-
 local function pathOf(it)
 	local parts = {}
 	local t = it.Tab
@@ -3941,7 +3639,6 @@ local function pathOf(it)
 	if #parts == 0 then return "Page" end
 	return table.concat(parts, "  /  ")
 end
-
 local function flashRow(obj)
 	if not obj or not obj.Parent then return end
 	local rest = obj.BackgroundColor3
@@ -3959,14 +3656,12 @@ local function flashRow(obj)
 		FX.ripple(obj, nil, Theme.Accent, { Radius = 10, Alpha = 0.78, Time = 0.7 })
 	end
 end
-
 function Window:_register(it)
 	if not it or not it.Name or tostring(it.Name) == "" then return end
 	it.Name = tostring(it.Name)
 	it.Lower = it.Name:lower()
 	self.Index[#self.Index + 1] = it
 end
-
 function Window:_search(q)
 	local tokens = {}
 	for w in q:gmatch("%S+") do tokens[#tokens + 1] = w end
@@ -4013,7 +3708,6 @@ function Window:_search(q)
 	while #out > MAX_RESULTS do table.remove(out) end
 	return out
 end
-
 function Window:_paintSel(scrollTo)
 	if not IS_TOUCH then
 		for i, row in ipairs(self._srRows) do
@@ -4037,14 +3731,12 @@ function Window:_paintSel(scrollTo)
 		tween(sc, { CanvasPosition = Vector2.new(0, math.max(cp, 0)) }, 0.15, Enum.EasingStyle.Quad)
 	end
 end
-
 function Window:_moveSel(d)
 	local n = #self._srRows
 	if n == 0 then return end
 	self._sel = ((self._sel - 1 + d) % n) + 1
 	self:_paintSel(true)
 end
-
 function Window:_renderResults(q, results)
 	local scroll = self.SearchScroll
 	if not scroll then return end
@@ -4059,11 +3751,9 @@ function Window:_renderResults(q, results)
 	self._srRows = {}
 	prune()
 	self._sel = 1
-
 	local n = #results
 	self.SearchInfo.Text = n == 0 and ('Nothing found for "' .. q .. '"')
 		or string.format('%d result%s for "%s"', n, n == 1 and "" or "s", q)
-
 	Library._sink = self._srConns
 	local ok, err = pcall(function()
 		if n == 0 then
@@ -4144,7 +3834,6 @@ function Window:_renderResults(q, results)
 	Library._sink = nil
 	if not ok then warn("[ZystrixUI] search render: " .. tostring(err)) end
 end
-
 function Window:_restorePage()
 	local cur = self.Current
 	if cur and cur.Page then
@@ -4152,7 +3841,6 @@ function Window:_restorePage()
 		tween(cur.Page, { GroupTransparency = 0 }, 0.14, Enum.EasingStyle.Quad)
 	end
 end
-
 function Window:_openSearchPage()
 	local sp = self.SearchPage
 	if not sp or self.SearchOpen then return end
@@ -4171,7 +3859,6 @@ function Window:_openSearchPage()
 	sp.Position = UDim2.new(0.5, 0, 0.5, 6)
 	tween(sp, { GroupTransparency = 0, Position = PAGE_REST }, 0.18, Enum.EasingStyle.Quint)
 end
-
 function Window:_closeSearchPage(restore)
 	local sp = self.SearchPage
 	if not sp or not self.SearchOpen then return end
@@ -4187,7 +3874,6 @@ function Window:_closeSearchPage(restore)
 	end)
 	if restore then self:_restorePage() end
 end
-
 function Window:_queueFilter(q)
 	self._qTok = (self._qTok or 0) + 1
 	local tok = self._qTok
@@ -4205,7 +3891,6 @@ function Window:_queueFilter(q)
 		end
 	end)
 end
-
 function Window:_flushFilter()
 	if self._pendingQ ~= nil then
 		local p = self._pendingQ
@@ -4214,7 +3899,6 @@ function Window:_flushFilter()
 		self:_filter(p)
 	end
 end
-
 function Window:ClearSearch(noRestore)
 	self._pendingQ = nil
 	self._qTok = (self._qTok or 0) + 1
@@ -4222,7 +3906,6 @@ function Window:ClearSearch(noRestore)
 	if self.SearchBox and self.SearchBox.Text ~= "" then self.SearchBox.Text = "" end
 	self:_filter("")
 end
-
 function Window:_reveal(r)
 	local tab, target, sec = r.Tab, r.Row, r.Section
 	if not tab or not target or not target.Parent then return end
@@ -4241,7 +3924,6 @@ function Window:_reveal(r)
 		task.delay(0.3, function() flashRow(target) end)
 	end)
 end
-
 function Window:_goto(r)
 	local tab = r.Tab
 	if not tab then return end
@@ -4262,7 +3944,6 @@ function Window:_goto(r)
 		self:_reveal({ Tab = tab, Row = r.Row, Section = r.Section })
 	end
 end
-
 function Window:_filter(q)
 	q = (tostring(q or ""):lower():gsub("^%s+", ""):gsub("%s+$", ""))
 	if q == self._lastQ then return end
@@ -4270,7 +3951,6 @@ function Window:_filter(q)
 	local searching = q ~= ""
 	self.Searching = searching
 	for _, gl in ipairs(self.GroupLabels) do gl.Visible = not searching end
-
 	if not searching then
 		for _, t in ipairs(self.Tabs) do
 			if not t.ParentTab then
@@ -4283,7 +3963,6 @@ function Window:_filter(q)
 		self:_closeSearchPage(true)
 		return
 	end
-
 	local results = self:_search(q)
 	self.SearchResults = results
 	local anyHit, nameHit = {}, {}
@@ -4310,30 +3989,98 @@ function Window:_filter(q)
 	self:_openSearchPage()
 	self:_renderResults(q, results)
 end
-
 function Window:SetMinimized(state)
 	state = state and true or false
 	self:Toggle(not state)
 end
-
 function Window:SetMaximized(state)
 	state = state and true or false
 	if state == self.Maximized then return end
 	closePopup()
 	if SliderLock.Active then pcall(SliderLock.Active) end
 	self.Maximized = state
+	if self.Grip then self.Grip.Visible = (not state) and self.GripOn ~= false and self.Visible end
 	self._minBusy = false
 	if self.Minimized then
 		self.Minimized = false
 		self:_setLoops(self.Visible)
 		self._minTok = (self._minTok or 0) + 1
 		self.Body.Visible = true
-		tween(self.Main, { Size = UDim2.fromOffset(BASE_W, BASE_H) }, 0.35)
+		tween(self.Main, { Size = UDim2.fromOffset(WinW, WinH) }, 0.35)
 	end
 	tween(ScaleObj, { Scale = state and maxScale() or fitScale() }, 0.32, Enum.EasingStyle.Quint)
 	tween(self.Main, { Position = UDim2.fromScale(0.5, 0.5) }, 0.4)
 end
-
+function Window:_saveSize()
+	if not HasFS then return end
+	self._saveTok = (self._saveTok or 0) + 1
+	local my = self._saveTok
+	task.delay(0.6, function()
+		if my ~= self._saveTok then return end
+		ensureFolder(ROOT)
+		ensureFolder(Library.ConfigFolder)
+		pcall(writefile, Library.ConfigFolder .. "/window.txt", string.format("%d,%d,%.2f", WinW, WinH, UserScale))
+	end)
+end
+function Window:SetSize(w, h, animate)
+	local vp = viewport()
+	local s = math.max(ScaleObj.Scale, 0.05)
+	local maxW = math.max(MIN_W, math.min(MAX_W, (vp.X - 8) / s))
+	local maxH = math.max(MIN_H, math.min(MAX_H, (vp.Y - 8) / s))
+	w = math.floor(math.clamp(tonumber(w) or WinW, MIN_W, maxW))
+	h = math.floor(math.clamp(tonumber(h) or WinH, MIN_H, maxH))
+	WinW, WinH = w, h
+	if animate then
+		tween(self.Main, { Size = UDim2.fromOffset(w, h) }, 0.3, Enum.EasingStyle.Quint)
+	else
+		self.Main.Size = UDim2.fromOffset(w, h)
+	end
+	task.delay(animate and 0.35 or 0.05, function()
+		if not self.Main.Parent or self._resizing then return end
+		local p = self.Main.Position
+		local nx, ny = clampCenter(self.Main, p.X.Offset, p.Y.Offset, p)
+		if math.abs(nx - p.X.Offset) > 0.5 or math.abs(ny - p.Y.Offset) > 0.5 then
+			tween(self.Main, { Position = UDim2.new(p.X.Scale, nx, p.Y.Scale, ny) }, 0.2)
+		end
+	end)
+	self:_saveSize()
+	return w, h
+end
+function Window:_fitSize(sc)
+	if self.Maximized then return end
+	local vp = viewport()
+	local s = math.max(sc or ScaleObj.Scale, 0.05)
+	local maxW = math.max(MIN_W, math.min(MAX_W, (vp.X - 8) / s))
+	local maxH = math.max(MIN_H, math.min(MAX_H, (vp.Y - 8) / s))
+	if WinW > maxW + 0.5 or WinH > maxH + 0.5 then
+		self:SetSize(math.min(WinW, maxW), math.min(WinH, maxH), true)
+	end
+end
+function Window:ResetSize()
+	self:SetSize(BASE_W, BASE_H, true)
+	tween(self.Main, { Position = UDim2.fromScale(0.5, 0.5) }, 0.35, Enum.EasingStyle.Quint)
+end
+function Window:SetUserScale(v)
+	UserScale = math.clamp(tonumber(v) or 1, 0.6, 1.3)
+	self._scTok = (self._scTok or 0) + 1
+	local my = self._scTok
+	task.spawn(function()
+		repeat task.wait(0.1) until my ~= self._scTok or not SliderLock.Active
+		if my ~= self._scTok or not self.Main.Parent then return end
+		local goal = self.Maximized and maxScale() or fitScale()
+		tween(ScaleObj, { Scale = goal }, 0.25, Enum.EasingStyle.Quint)
+		task.delay(0.3, function()
+			if my == self._scTok and self.Main.Parent then
+				self:_fitSize(goal)
+				self:_saveSize()
+			end
+		end)
+	end)
+end
+function Window:SetGripVisible(v)
+	self.GripOn = v and true or false
+	if self.Grip then self.Grip.Visible = self.GripOn and self.Visible and not self.Maximized end
+end
 function Window:_setLoops(on)
 	for _, tw in ipairs(self._loops or {}) do
 		pcall(function()
@@ -4341,7 +4088,6 @@ function Window:_setLoops(on)
 		end)
 	end
 end
-
 function Window:Toggle(state)
 	if state == nil then state = not self.Visible end
 	if state == self.Visible then return end
@@ -4364,23 +4110,33 @@ function Window:Toggle(state)
 		main.Position = lowered
 		ScaleObj.Scale = target
 		canvas.GroupTransparency = 1
+		if self.Slab then
+			self.Slab.BackgroundTransparency = 1
+			tween(self.Slab, { BackgroundTransparency = Library.Transparency }, 0.35, Enum.EasingStyle.Quad)
+		end
 		if rim then rim.Transparency = 1 end
 		if shadow then shadow:Set(false) end
 		if ctrls then ctrls.Visible = false end
+		if self.Grip then self.Grip.Visible = false end
 		tween(main, { Position = rest }, 0.5, Enum.EasingStyle.Quint)
 		tween(canvas, { GroupTransparency = 0 }, 0.26, Enum.EasingStyle.Quad)
 		if rim then tween(rim, { Transparency = 0 }, 0.35, Enum.EasingStyle.Quad) end
 		if shadow then shadow:Fade(true, 0.4) end
 		task.delay(0.12, function()
-			if self._tgTok == tok and ctrls then ctrls.Visible = true end
+			if self._tgTok == tok then
+				if ctrls then ctrls.Visible = true end
+				if self.Grip then self.Grip.Visible = self.GripOn ~= false and not self.Maximized end
+			end
 		end)
 		task.delay(0.55, function()
 			if self._tgTok == tok then self._restPos = nil end
 		end)
 	else
 		if ctrls then ctrls.Visible = false end
+		if self.Grip then self.Grip.Visible = false end
 		tween(main, { Position = lowered }, 0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 		tween(canvas, { GroupTransparency = 1 }, 0.2, Enum.EasingStyle.Quad)
+		if self.Slab then tween(self.Slab, { BackgroundTransparency = 1 }, 0.2, Enum.EasingStyle.Quad) end
 		if rim then tween(rim, { Transparency = 1 }, 0.2, Enum.EasingStyle.Quad) end
 		if shadow then shadow:Fade(false, 0.2) end
 		task.delay(0.23, function()
@@ -4392,7 +4148,6 @@ function Window:Toggle(state)
 		end)
 	end
 end
-
 function Window:SetUserVisible(v)
 	self.UserCard.Visible = v
 	tween(self.TabClip, { Size = UDim2.new(1, 0, 1, -(TABCLIP_Y + (v and 60 or 8) + (self._discExtra or 0))) }, 0.25)
@@ -4400,7 +4155,6 @@ function Window:SetUserVisible(v)
 		tween(self.DiscordBtn, { Position = UDim2.new(0, 8, 1, v and -58 or -8) }, 0.25)
 	end
 end
-
 function Window:_statsRefresh()
 	local parts = {}
 	if self.ShowFPS then parts[#parts + 1] = string.format("%d FPS", math.floor(self.Fps + 0.5)) end
@@ -4410,7 +4164,6 @@ function Window:_statsRefresh()
 	self.StatsLabel.Text = table.concat(parts, "  |  ")
 	self.TitleBlock.Size = UDim2.new(1, -(TITLE_X + CTRL_W + 20 + (show and 124 or 0)), 1, 0)
 end
-
 function Window:LoadAutoConfig()
 	if not HasFS then return end
 	local f = Library.ConfigFolder
@@ -4421,24 +4174,24 @@ function Window:LoadAutoConfig()
 		end
 	end
 end
-
 function Window:CreateSettingsTab(opts)
 	opts = opts or {}
 	local tab = self:AddTab({ Name = "Settings", Icon = "settings", Group = opts.Group, Description = opts.Description })
 	local ap = tab:AddSection({ Name = "Appearance", Icon = "palette", Side = "Left" })
 	ap:AddDropdown({ Name = "Theme", Icon = "palette", Options = Library.ThemeList, Default = Library.ThemeName, AllowNone = false, Flag = "UI_Theme", Callback = function(v) Library:SetTheme(v) end })
 	ap:AddSlider({ Name = "Transparency", Icon = "contrast", Min = 0, Max = 0.8, Increment = 0.01, Default = Library.Transparency, Flag = "UI_Transparency", Callback = function(v) Library:SetTransparency(v) end })
+	ap:AddSlider({ Name = "UI Scale", Icon = "slider", Min = 0.6, Max = 1.3, Increment = 0.05, Default = UserScale, Suffix = "x", Flag = "UI_Scale", Tooltip = "Scales the whole window. Applies when you release the slider.", Callback = function(v) self:SetUserScale(v) end })
+	ap:AddToggle({ Name = "Resize Handle", Icon = "maximize", Default = true, Flag = "UI_Grip", Tooltip = "Corner handle to resize the window. Double-click it to reset.", Callback = function(v) self:SetGripVisible(v) end })
+	ap:AddButton({ Name = "Reset Window Size", Icon = "refresh", ButtonText = "Reset", Callback = function() self:ResetSize() end })
 	ap:AddDropdown({ Name = "Background", Icon = "grid", Options = Library.BackgroundList, Default = Library.Background.Name, AllowNone = false, Flag = "UI_Background", Callback = function(v) Library:SetBackground(v) end })
 	ap:AddSlider({ Name = "Background Glow", Icon = "sun", Min = 0.2, Max = 2.5, Increment = 0.05, Default = Library.Background.Intensity, Suffix = "x", Flag = "UI_BackgroundGlow", Callback = function(v) Library:SetBackgroundIntensity(v) end })
 	ap:AddToggle({ Name = "Click Effects", Icon = "bolt", Default = true, Flag = "UI_Effects", Callback = function(v) Library:SetEffects(v) end })
 	ap:AddToggle({ Name = "Show User", Icon = "user", Default = true, Flag = "UI_ShowUser", Callback = function(v) self:SetUserVisible(v) end })
 	ap:AddToggle({ Name = "Show FPS", Icon = "pulse", Default = false, Flag = "UI_ShowFPS", Callback = function(v) self.ShowFPS = v self:_statsRefresh() end })
 	ap:AddToggle({ Name = "Show Ping", Icon = "signal", Default = false, Flag = "UI_ShowPing", Callback = function(v) self.ShowPing = v self:_statsRefresh() end })
-
 	local kb = tab:AddSection({ Name = "Keybinds", Icon = "keyboard", Side = "Left" })
 	kb:AddKeybind({ Name = "Toggle UI", Icon = "keyboard", Default = self.ToggleKey, Flag = "UI_ToggleKey", Changed = function(k) if k then self.ToggleKey = k end end })
 	kb:AddButton({ Name = "Unload UI", Icon = "close", Callback = function() self:RequestClose() end })
-
 	local mo = tab:AddSection({ Name = "Motion 3D", Icon = "pulse", Side = "Left" })
 	mo:AddToggle({ Name = "3D Tilt", Icon = "grid", Default = true, Flag = "UI_Tilt", Callback = function(v) Library.Motion.Tilt = v end })
 	mo:AddToggle({ Name = "Idle Wave", Icon = "pulse", Default = true, Flag = "UI_Wave", Callback = function(v) Library.Motion.Wave = v end })
@@ -4448,7 +4201,6 @@ function Window:CreateSettingsTab(opts)
 		mo:AddToggle({ Name = "Gyroscope", Icon = "signal", Default = true, Flag = "UI_Gyro", Callback = function(v) Library.Motion.Gyro = v end })
 		mo:AddToggle({ Name = "Invert Gyroscope", Icon = "refresh", Default = false, Flag = "UI_GyroInvert", Callback = function(v) Library.Motion.InvertGyro = v end })
 	end
-
 	local nf = tab:AddSection({ Name = "Notifications", Icon = "bell", Side = "Right" })
 	nf:AddDropdown({ Name = "Position", Icon = "compass", Options = Library.NotifyPlaces, Default = Library.NotifyPosition, AllowNone = false,
 		Flag = "UI_NotifyPos", Tooltip = "Where toasts appear on screen.", Callback = function(v)
@@ -4483,7 +4235,6 @@ function Window:CreateSettingsTab(opts)
 	Library.NotifyListeners[#Library.NotifyListeners + 1] = function(h)
 		hist:Log(h.Title .. (h.Content ~= "" and (": " .. h.Content) or ""), kindMap[h.Type] or "info")
 	end
-
 	local cf = tab:AddSection({ Name = "Config", Icon = "save", Side = "Right" })
 	local nameBox = cf:AddTextbox({ Name = "Config Name", Icon = "edit", Placeholder = "MyConfig" })
 	local sel
@@ -4537,7 +4288,6 @@ function Window:CreateSettingsTab(opts)
 	end })
 	return tab
 end
-
 function Window:CreateDashboard(opts)
 	opts = opts or {}
 	local win = self
@@ -4546,24 +4296,20 @@ function Window:CreateDashboard(opts)
 	local scroll = tab.Scroll
 	local D = { Tab = tab }
 	tab.Dashboard = D
-
 	local GOOD, WARN, BAD = Kit.Tones.success.Color, Kit.Tones.warning.Color, Kit.Tones.error.Color
 	local TILE_H, GAP, SAMPLES = 46, 6, 36
 	local slides, glows = {}, {}
 	local born = os.clock()
 	local ts = game:GetService("TeleportService")
-
 	local function copy(text)
 		local fn = setclipboard or toclipboard or (syn and syn.write_clipboard)
 		if not fn then return false end
 		return (pcall(fn, text))
 	end
-
 	local function clock(sec)
 		sec = math.max(0, math.floor(sec))
 		return string.format("%02d:%02d:%02d", math.floor(sec / 3600), math.floor(sec / 60) % 60, sec % 60)
 	end
-
 	local function panel(parent, size, pos)
 		local f = new("Frame", { Bg = "Card", Size = size, Position = pos or UDim2.new(), ClipsDescendants = true, Parent = parent })
 		corner(f, 12)
@@ -4572,7 +4318,6 @@ function Window:CreateDashboard(opts)
 		slides[#slides + 1] = { f, f.Position }
 		return f
 	end
-
 	local function head(card, icon, text, rightW)
 		local h = new("Frame", { Size = UDim2.new(1, 0, 0, 36), Parent = card })
 		iconTile(h, icon, 22, 13, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0) })
@@ -4582,7 +4327,6 @@ function Window:CreateDashboard(opts)
 		})
 		return h
 	end
-
 	local function glow(parent, fade, rot)
 		local g = new("Frame", { Bg = "Accent", BackgroundTransparency = 0.84, Size = UDim2.fromScale(1, 1), Parent = parent })
 		corner(g, 12)
@@ -4590,12 +4334,10 @@ function Window:CreateDashboard(opts)
 		glows[#glows + 1] = gr
 		return g
 	end
-
 	local function press(gui)
 		local rest = gui.BackgroundColor3
 		flashObj(gui, "BackgroundColor3", rest:Lerp(Theme.Accent, 0.2), function() return rest end, 0.05, 0.3)
 	end
-
 	local function clickable(gui, fn, key, popObj)
 		local hit = hitZone(gui, { ZIndex = 6 })
 		onHover(hit,
@@ -4609,7 +4351,6 @@ function Window:CreateDashboard(opts)
 		end)
 		return hit
 	end
-
 	local function tile(parent, title, value, order)
 		local f = new("Frame", { Bg = "Element", LayoutOrder = order or 0, Parent = parent })
 		corner(f, 9)
@@ -4650,7 +4391,6 @@ function Window:CreateDashboard(opts)
 		function obj:Click(fn) return clickable(f, fn) end
 		return obj
 	end
-
 	local function grid(parent, cols, cellH, pos, size)
 		local g = new("Frame", { Position = pos, Size = size, Parent = parent })
 		new("UIGridLayout", {
@@ -4659,21 +4399,17 @@ function Window:CreateDashboard(opts)
 		})
 		return g
 	end
-
 	local function row(h, order)
 		return new("Frame", { Size = UDim2.new(1, 0, 0, h), LayoutOrder = order, Parent = scroll })
 	end
-
 	local function pulse(obj, prop, to, t)
 		TweenService:Create(obj, TweenInfo.new(t or 1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { [prop] = to }):Play()
 	end
-
 	local hour = tonumber(os.date("%H")) or 12
 	local hello = opts.Greeting or (hour < 5 and "Good night" or hour < 11 and "Good morning" or hour < 15 and "Good afternoon" or hour < 19 and "Good evening" or "Good night")
 	local gameName = opts.GameName or tostring(game.Name)
 	local age = LocalPlayer.AccountAge or 0
 	local ageText = age >= 365 and string.format("%.1f years", age / 365) or (age .. " days")
-
 	local hero = panel(row(84, 1), UDim2.fromScale(1, 1))
 	glow(hero, NumberSequence.new(0, 1), 20)
 	local avBox = new("Frame", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 0), Size = UDim2.fromOffset(58, 58), Bg = "Hover", Parent = hero })
@@ -4722,7 +4458,6 @@ function Window:CreateDashboard(opts)
 			sub.Text = "@" .. LocalPlayer.Name .. "  |  " .. info.Name
 		end
 	end)
-
 	local facts = new("Frame", { Bg = "Element", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(150, 62), Parent = hero })
 	corner(facts, 9)
 	stroke(facts)
@@ -4736,12 +4471,10 @@ function Window:CreateDashboard(opts)
 	fact(6, "Account", ageText)
 	fact(23, "User ID", tostring(LocalPlayer.UserId))
 	local sessionLbl = fact(40, "Session", "00:00:00")
-
 	local rowB = row(202, 2)
 	local serverCard = panel(rowB, UDim2.new(0.56, -4, 1, 0))
 	win:_register({ Name = "Server", Kind = "Card", Tab = tab, Row = serverCard, Icon = "server", Extra = "Dashboard" })
 	head(serverCard, "server", "Server")
-
 	local sg = grid(serverCard, 2, TILE_H, UDim2.fromOffset(10, 40), UDim2.new(1, -20, 0, TILE_H * 3 + GAP * 2))
 	local tPlayers = tile(sg, "Players", "-", 1)
 	local tPing = tile(sg, "Latency", "-", 2)
@@ -4749,7 +4482,6 @@ function Window:CreateDashboard(opts)
 	local tRegion = tile(sg, "Region", "...", 4)
 	local tUp = tile(sg, "Server Uptime", "00:00:00", 5)
 	local tJoin = tile(sg, "Join Script", "Tap to copy", 6)
-
 	local joinCode = string.format('game:GetService("TeleportService"):TeleportToPlaceInstance(%s, "%s", game.Players.LocalPlayer)', tostring(game.PlaceId), tostring(game.JobId))
 	tJoin:Click(function()
 		local ok = copy(joinCode)
@@ -4757,19 +4489,16 @@ function Window:CreateDashboard(opts)
 		task.delay(1.6, function() tJoin:Set("Tap to copy") end)
 		Library:Notify({ Title = "Join Script", Content = ok and "Copied to clipboard." or "Your executor has no clipboard.", Icon = "copy", Type = ok and "success" or "warning" })
 	end)
-
 	task.spawn(function()
 		local ok, code = pcall(function()
 			return game:GetService("LocalizationService"):GetCountryRegionForPlayerAsync(LocalPlayer)
 		end)
 		tRegion:Set(ok and code and tostring(code) or "N/A")
 	end)
-
 	local hasDisc = type(opts.Discord) == "string" and opts.Discord ~= ""
 	local rc = new("Frame", { Position = UDim2.new(0.56, 4, 0, 0), Size = UDim2.new(0.44, -4, 1, 0), Parent = rowB })
 	local exCard = panel(rc, UDim2.new(1, 0, 0, hasDisc and 97 or 202))
 	win:_register({ Name = "Executor", Kind = "Card", Tab = tab, Row = exCard, Icon = "cpu", Extra = "Dashboard" })
-
 	local exName, exVer = "Unknown", "Executor"
 	if identifyexecutor then
 		local ok, n, v = pcall(identifyexecutor)
@@ -4817,7 +4546,6 @@ function Window:CreateDashboard(opts)
 		local cs = stroke(chip, c[2] and "Accent" or "Stroke")
 		if c[2] then cs.Transparency = 0.55 end
 	end
-
 	if hasDisc then
 		local disc = panel(rc, UDim2.new(1, 0, 0, 97), UDim2.fromOffset(0, 105))
 		glow(disc, NumberSequence.new(1, 0), 0).BackgroundTransparency = 0.76
@@ -4851,7 +4579,6 @@ function Window:CreateDashboard(opts)
 			end
 		end)
 	end
-
 	local rowC = row(152, 3)
 	local frCard = panel(rowC, UDim2.new(0.5, -4, 1, 0))
 	win:_register({ Name = "Friends", Kind = "Card", Tab = tab, Row = frCard, Icon = "users", Extra = "Dashboard" })
@@ -4863,7 +4590,6 @@ function Window:CreateDashboard(opts)
 	local tOn = tile(fg, "Online", "...", 2)
 	local tOff = tile(fg, "Offline", "...", 3)
 	local tAll = tile(fg, "All Friends", "...", 4)
-
 	local loading = false
 	local function loadFriends()
 		if loading then return end
@@ -4905,7 +4631,6 @@ function Window:CreateDashboard(opts)
 		FX.pop(refreshIcon, 1.4, 0.5)
 		loadFriends()
 	end)
-
 	local perfCard = panel(rowC, UDim2.new(0.5, -4, 1, 0), UDim2.new(0.5, 4, 0, 0))
 	win:_register({ Name = "Monitor", Kind = "Card", Tab = tab, Row = perfCard, Icon = "pulse", Extra = "Dashboard" })
 	local ph = head(perfCard, "pulse", "Monitor", 100)
@@ -4951,7 +4676,6 @@ function Window:CreateDashboard(opts)
 		bars[i] = b
 	end
 	local foot = new("TextLabel", { Text = "", Fg = "SubText", TextSize = 10, Position = UDim2.fromOffset(12, 130), Size = UDim2.new(1, -24, 0, 14), Parent = perfCard })
-
 	local hist = { fps = {}, ping = {}, mem = {} }
 	local function push(list, v)
 		list[#list + 1] = v
@@ -4963,7 +4687,6 @@ function Window:CreateDashboard(opts)
 		local ok, mem = pcall(function() return Stats:GetTotalMemoryUsageMb() end)
 		push(hist.mem, ok and mem or 0)
 	end
-
 	function D.render()
 		local m = modes[mode].key
 		local list = hist[m]
@@ -4992,16 +4715,13 @@ function Window:CreateDashboard(opts)
 		range.Text = n > 0 and string.format("%d avg  %d-%d", math.floor(sum / n + 0.5), math.floor(low + 0.5), math.floor(peak + 0.5)) or ""
 		foot.Text = string.format("Ping %d ms  |  Memory %d MB  |  %d players", math.floor(win.Ping or 0), math.floor(hist.mem[#hist.mem] or 0), #Players:GetPlayers())
 	end
-
 	local label = new("TextLabel", {
 		Text = "QUICK ACTIONS", Font = FONT_BOLD, TextSize = 10, Fg = "SubText", Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 4, Parent = scroll,
 	})
 	padding(label, 4, 0, 0, 0)
-
 	local function confirmThen(title, text, fn)
 		Library:Confirm({ Title = title, Content = text, ConfirmText = "Continue", CancelText = "Cancel", Icon = "info", Callback = fn })
 	end
-
 	local antiConn, savedGfx
 	local actions = {
 		{ Name = "Rejoin", Sub = "Same server", Icon = "refresh", Callback = function()
@@ -5073,7 +4793,6 @@ function Window:CreateDashboard(opts)
 		end },
 	}
 	for _, a in ipairs(opts.Actions or {}) do actions[#actions + 1] = a end
-
 	local rows = math.ceil(#actions / 3)
 	local ag = grid(scroll, 3, 52, UDim2.new(), UDim2.new(1, 0, 0, rows * 52 + (rows - 1) * GAP))
 	ag.LayoutOrder = 5
@@ -5102,7 +4821,6 @@ function Window:CreateDashboard(opts)
 		end
 		D.Actions[a.Name] = state
 	end
-
 	local function updateTiles()
 		local players, maxP = #Players:GetPlayers(), Players.MaxPlayers or 0
 		tPlayers:Set(maxP > 0 and (players .. " / " .. maxP) or tostring(players), nil, true)
@@ -5114,7 +4832,6 @@ function Window:CreateDashboard(opts)
 		tUp:Set(clock(workspace.DistributedGameTime), nil, true)
 		sessionLbl.Text = clock(os.clock() - born)
 	end
-
 	local acc, accSec, accFr, accRot = 0, 0, 0, 0
 	connect(RunService.Heartbeat, function(dt)
 		acc += dt
@@ -5146,7 +4863,6 @@ function Window:CreateDashboard(opts)
 			end
 		end
 	end)
-
 	function D.intro()
 		for i, sl in ipairs(slides) do
 			local f, base = sl[1], sl[2]
@@ -5159,12 +4875,10 @@ function Window:CreateDashboard(opts)
 	connect(tab.Page:GetPropertyChangedSignal("Visible"), function()
 		if tab.Page.Visible then D.intro() end
 	end)
-
 	function D.Refresh()
 		loadFriends()
 		D.render()
 	end
-
 	sample()
 	sample()
 	D.render()
@@ -5174,24 +4888,9 @@ function Window:CreateDashboard(opts)
 	D.intro()
 	return tab
 end
-
-------------------------------------------------------------------------
--- DIALOGS
--- Library:Confirm({
---   Title, Content, Icon, Tag, Type = "info"|"success"|"warning"|"error" (Danger = true == error),
---   ConfirmText, CancelText (false = single button / alert), Callback(value), OnCancel,
---   Input = { Placeholder, Default, Numeric, MaxLength, Validate = fn(text) -> ok, message },
---   Countdown = seconds before confirm unlocks (default 3 for error/danger),
---   Remember = "key" -> "Don't ask again" checkbox
--- })
--- Library:Alert({...})  one-button dialog      Library:Prompt({...})  dialog with a text field
--- Dialogs queue instead of being dropped when one is already open.
-------------------------------------------------------------------------
 Library._confirmQueue = {}
 Library.ConfirmSkips = {}
-
 function Library:ResetConfirmations() Library.ConfirmSkips = {} end
-
 function Library:Alert(o)
 	o = o or {}
 	local c = {}
@@ -5200,7 +4899,6 @@ function Library:Alert(o)
 	c.ConfirmText = o.ConfirmText or "OK"
 	return Library:Confirm(c)
 end
-
 function Library:Prompt(o)
 	o = o or {}
 	local c = {}
@@ -5210,7 +4908,6 @@ function Library:Prompt(o)
 	c.ConfirmText = o.ConfirmText or "Submit"
 	return Library:Confirm(c)
 end
-
 function Library:Confirm(o)
 	o = o or {}
 	if o.Remember and Library.ConfirmSkips[o.Remember] then
@@ -5224,7 +4921,6 @@ function Library:Confirm(o)
 	end
 	Library._confirm = true
 	closePopup()
-
 	local W, T = 332, Kit.Thick.Dialog
 	local WHITE, BLACK = Kit.White, Kit.Black
 	local typeName = o.Type
@@ -5242,7 +4938,6 @@ function Library:Confirm(o)
 	local countdown = tonumber(o.Countdown)
 	if countdown == nil and danger then countdown = 3 end
 	if countdown and countdown <= 0 then countdown = nil end
-
 	local title = tostring(o.Title or "Confirm")
 	local body = tostring(o.Content or "")
 	local textH = 0
@@ -5270,10 +4965,8 @@ function Library:Confirm(o)
 	end
 	local btnY = cursor + 6
 	local H = btnY + 44 + 18
-
 	local vp = viewport()
 	local s = math.min(1, vp.X * 0.92 / W, vp.Y * 0.9 / (H + T + 24))
-
 	local blocker = new("TextButton", {
 		Name = "DialogBlocker", Size = UDim2.fromScale(1, 1), BackgroundColor3 = BLACK, BackgroundTransparency = 1,
 		ZIndex = Kit.Z.Dialog, Parent = Gui,
@@ -5294,7 +4987,6 @@ function Library:Confirm(o)
 	})
 	card.GroupTransparency = 1
 	outStroke.Transparency = 1
-
 	local beltTw
 	if danger then
 		local clip = new("Frame", {
@@ -5312,11 +5004,9 @@ function Library:Confirm(o)
 		})
 		beltTw:Play()
 	end
-
 	Kit.tag(card, o.Tag or (isTone and tLabel) or (single and "Notice" or "Confirm"), tone, {
 		TextSize = 11, Position = UDim2.fromOffset(20, tagY), Size = UDim2.fromOffset(W - 40 - 64, 12),
 	})
-
 	local tsize = 17
 	while tsize > 12 and textWidth(title, tsize, FONT_BOLD) > W - 42 do tsize -= 1 end
 	new("TextLabel", {
@@ -5330,7 +5020,6 @@ function Library:Confirm(o)
 			Size = UDim2.fromOffset(W - 40, textH), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, Parent = card,
 		})
 	end
-
 	local inputBox, msgLbl, inputStroke, inputWrap
 	if hasInput then
 		local io = o.Input
@@ -5368,7 +5057,6 @@ function Library:Confirm(o)
 			if enter and Library._confirmSubmit then Library._confirmSubmit() end
 		end)
 	end
-
 	local remember = false
 	if o.Remember then
 		local box = new("Frame", {
@@ -5391,7 +5079,6 @@ function Library:Confirm(o)
 			FX.pop(box, 1.25, 0.3)
 		end, true)
 	end
-
 	local btnRow = new("Frame", { Name = "Buttons", Position = UDim2.fromOffset(0, btnY), Size = UDim2.fromOffset(W, 44), Parent = card })
 	local gap = 12
 	local bw = single and (W - 40) or (W - 40 - gap) / 2
@@ -5407,7 +5094,6 @@ function Library:Confirm(o)
 		Text = baseText, W = bw, H = 38, Radius = 11, Thick = 4, Variant = "primary",
 		Color = tone, Hint = (showHints and not danger) and "Enter" or nil, Position = UDim2.fromOffset(single and 20 or (20 + bw + gap), 0),
 	})
-
 	local lockUntil = countdown and (os.clock() + countdown) or nil
 	local function locked() return lockUntil ~= nil and os.clock() < lockUntil end
 	if lockUntil then
@@ -5424,15 +5110,12 @@ function Library:Confirm(o)
 			end
 		end)
 	end
-
 	local bx0, by0 = W - 46, danger and 8 or 2
 	local badge = Kit.badge(root, icon, accent, 46, { Name = "Badge", Position = UDim2.fromOffset(bx0, by0), Visible = false, ZIndex = 5 })
-
 	local closed, escCon, endCon, loopCon = false, nil, nil, nil
 	local touch, mouseDown = nil, false
 	local landed = false
 	local drop = { x = -20, v = 0 }
-
 	local function close(cb, value)
 		if closed then return end
 		closed = true
@@ -5470,7 +5153,6 @@ function Library:Confirm(o)
 			if nextO then Library:Confirm(nextO) end
 		end)
 	end
-
 	local function submit()
 		if closed then return end
 		if locked() then
@@ -5504,12 +5186,10 @@ function Library:Confirm(o)
 		close(o.Callback, value)
 	end
 	Library._confirmSubmit = submit
-
 	local function inside(pos)
 		local ap, as = root.AbsolutePosition, root.AbsoluteSize
 		return pos.X >= ap.X and pos.X <= ap.X + as.X and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y
 	end
-
 	escCon = UserInputService.InputBegan:Connect(function(i)
 		local kc = i.KeyCode
 		if kc == Enum.KeyCode.Escape then
@@ -5531,7 +5211,6 @@ function Library:Confirm(o)
 		if i == touch then touch = nil end
 		if i.UserInputType == Enum.UserInputType.MouseButton1 then mouseDown = false end
 	end)
-
 	Kit.click(blocker, function()
 		if single then return end
 		close(o.OnCancel)
@@ -5540,7 +5219,6 @@ function Library:Confirm(o)
 		cancel:OnClick(function() close(o.OnCancel) end)
 	end
 	okb:OnClick(function() submit() end)
-
 	local px, py, near, press = { x = 0, v = 0 }, { x = 0, v = 0 }, { x = 0, v = 0 }, { x = 0, v = 0 }
 	local t0 = os.clock()
 	local L = {}
@@ -5561,7 +5239,6 @@ function Library:Confirm(o)
 		local fade = 1 - math.clamp((math.max(math.abs(dx), math.abs(dy)) - 1.4) / 2, 0, 1)
 		return math.clamp(dx, -1, 1) * fade, math.clamp(dy, -1, 1) * fade
 	end
-
 	loopCon = RunService.RenderStepped:Connect(function(dt)
 		if not root.Parent then
 			loopCon:Disconnect()
@@ -5571,7 +5248,6 @@ function Library:Confirm(o)
 		local t = os.clock() - t0
 		local ap, as = root.AbsolutePosition, root.AbsoluteSize
 		local cx, cy = ap.X + as.X / 2, ap.Y + as.Y / 2
-
 		local tx, ty, nr = 0, 0, 0
 		if not closed and as.X > 0 and as.Y > 0 then
 			if touch then
@@ -5585,38 +5261,30 @@ function Library:Confirm(o)
 			end
 		end
 		if inputBox and inputBox:IsFocused() then tx, ty, nr = 0, 0, 0 end
-
 		step(px, tx, dt, 150, 16)
 		step(py, ty, dt, 150, 16)
 		step(near, nr, dt, 120, 14)
 		step(press, (mouseDown or touch) and 1 or 0, dt, 220, 16)
 		step(drop, closed and 7 or (landed and 0 or -20), dt, 190, 11)
-
 		local bob = math.sin(t * 1.7)
-
 		local fx = snap(-px.x * 2.5, 0.5)
 		local fy = snap(-py.x * 2 - near.x * 2 + press.x * 2 + drop.x, 0.5)
 		local c1, c2 = chg("fx", fx, 0.2), chg("fy", fy, 0.2)
 		if c1 or c2 then faceBox.Position = UDim2.fromOffset(fx, fy) end
-
 		local slx, sly = snap(px.x * 3.5, 0.5), T + snap(py.x * 2.5, 0.5)
 		local s1, s2 = chg("slx", slx, 0.2), chg("sly", sly, 0.2)
 		if s1 or s2 then slab.Position = UDim2.fromOffset(slx, sly) end
-
 		local bdx = bx0 + snap(-px.x * 5, 0.5)
 		local bdy = by0 + snap(-py.x * 3.5 + drop.x * 1.3 + bob * 1.6, 0.5)
 		local b1, b2 = chg("bdx", bdx, 0.2), chg("bdy", bdy, 0.2)
 		if b1 or b2 then badge.Position = UDim2.fromOffset(bdx, bdy) end
-
 		local kx, ky = snap(-px.x * 1.2, 0.5), btnY + snap(-py.x * 1, 0.5)
 		local k1, k2 = chg("kx", kx, 0.2), chg("ky", ky, 0.2)
 		if k1 or k2 then btnRow.Position = UDim2.fromOffset(kx, ky) end
-
 		local shx, shy = -px.x * 9, 12 + near.x * 3 - py.x * 9 + drop.x * 0.4
 		local h1, h2 = chg("shx", shx, 0.05), chg("shy", shy, 0.05)
 		if h1 or h2 then shadow.Holder.Position = UDim2.new(0.5, shx, 0.5, shy) end
 	end)
-
 	root.Rotation = -2.5
 	tween(blocker, { BackgroundTransparency = 0.5 }, 0.25)
 	tween(rootScale, { Scale = s }, 0.42, Enum.EasingStyle.Quint)
@@ -5626,7 +5294,6 @@ function Library:Confirm(o)
 	tween(slab, { BackgroundTransparency = 0 }, 0.25)
 	tween(slabStroke, { Transparency = 0 }, 0.25)
 	shadow:Fade(true, 0.4)
-
 	task.delay(0.2, function()
 		if closed then return end
 		landed = true
@@ -5653,7 +5320,6 @@ function Library:Confirm(o)
 		end)
 	end
 end
-
 function Window:RequestClose()
 	Library:Confirm({
 		Title = "Close UI?",
@@ -5667,9 +5333,7 @@ function Window:RequestClose()
 		Callback = function() Library:Unload() end,
 	})
 end
-
 function Window:Destroy() Library:Unload() end
-
 function Window:_clearBackground()
 	if self._bgLayer then
 		pcall(function() self._bgLayer:Destroy() end)
@@ -5685,20 +5349,17 @@ function Window:_clearBackground()
 	end
 	self._bgTweens, self._bgItems = {}, {}
 end
-
 function Window:_bgTrack(tw)
 	self._bgTweens[#self._bgTweens + 1] = tw
 	self._loops[#self._loops + 1] = tw
 	if not self.Visible or self.Minimized then pcall(function() tw:Pause() end) end
 	return tw
 end
-
 function Window:_bgLoop(obj, props, time, style, dir, reverses)
 	local tw = TweenService:Create(obj, TweenInfo.new(time, style or Enum.EasingStyle.Sine, dir or Enum.EasingDirection.InOut, -1, reverses ~= false), props)
 	tw:Play()
 	return self:_bgTrack(tw)
 end
-
 function Window:_bgAdd(inst, prop, base, col)
 	local it = { inst = inst, prop = prop, base = base, col = col }
 	self._bgItems[#self._bgItems + 1] = it
@@ -5710,7 +5371,6 @@ function Window:_bgAdd(inst, prop, base, col)
 	end
 	return it
 end
-
 function Window:_bgIntensity()
 	local k = Library.Background.Intensity or 1
 	for _, it in ipairs(self._bgItems or {}) do
@@ -5719,7 +5379,6 @@ function Window:_bgIntensity()
 		end
 	end
 end
-
 function Window:_bgRecolor()
 	for _, it in ipairs(self._bgItems or {}) do
 		if it.col and it.inst.Parent then
@@ -5727,17 +5386,14 @@ function Window:_bgRecolor()
 		end
 	end
 end
-
 function Window:_applyBackground()
 	if not self.Body then return end
 	self:_clearBackground()
 	local name = Library.Background.Name
 	if name == "None" or not name then return end
-
-	local W, H = BASE_W, BASE_H - HEADER_H - 1
+	local W, H = MAX_W, MAX_H - HEADER_H - 1
 	local layer = new("Frame", { Name = "Backdrop", Size = UDim2.fromScale(1, 1), ClipsDescendants = true, ZIndex = 0, Active = false, Parent = self.Body })
 	self._bgLayer = layer
-
 	if name == "Aurora" then
 		local glow = FX.Assets.glow
 		local function blob(w, h, x0, y0, x1, y1, base, col, time)
@@ -5799,7 +5455,6 @@ function Window:_applyBackground()
 		end
 	end
 end
-
 function Library:SetBackground(name)
 	if not table.find(Library.BackgroundList, name) then return end
 	Library.Background.Name = name
@@ -5807,14 +5462,12 @@ function Library:SetBackground(name)
 		if w._applyBackground then pcall(w._applyBackground, w) end
 	end
 end
-
 function Library:SetBackgroundIntensity(v)
 	Library.Background.Intensity = math.clamp(tonumber(v) or 1, 0, 3)
 	for _, w in ipairs(Library.Windows) do
 		if w._bgIntensity then pcall(w._bgIntensity, w) end
 	end
 end
-
 function Library:CreateWindow(opts)
 	opts = opts or {}
 	local self = setmetatable({
@@ -5825,40 +5478,44 @@ function Library:CreateWindow(opts)
 	Library.ConfigFolder = ROOT .. "/" .. (opts.ConfigFolder or "Default")
 	ensureFolder(ROOT)
 	ensureFolder(Library.ConfigFolder)
-
+	if HasFS then
+		local okR, raw = pcall(function()
+			local f = Library.ConfigFolder .. "/window.txt"
+			return isfile(f) and readfile(f) or nil
+		end)
+		local a, b, c = tostring(okR and raw or ""):match("^(%d+),(%d+),([%d%.]+)$")
+		if a then
+			WinW = math.clamp(tonumber(a), MIN_W, MAX_W)
+			WinH = math.clamp(tonumber(b), MIN_H, MAX_H)
+			UserScale = math.clamp(tonumber(c) or 1, 0.6, 1.3)
+		end
+	end
 	local Main = new("Frame", {
 		Name = "Main", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(BASE_W, BASE_H), Parent = Gui,
+		Size = UDim2.fromOffset(WinW, WinH), Parent = Gui,
 	})
 	ScaleObj = new("UIScale", { Scale = fitScale(), Parent = Main })
 	MainFrame = Main
 	self.Main = Main
-
 	self.Shadow = makeShadow(Main, 12)
-
 	local Canvas = new("CanvasGroup", {
 		Name = "Canvas", Size = UDim2.fromScale(1, 1), Bg = "Background", BackgroundTransparency = Library.Transparency, Parent = Main,
 	})
 	corner(Canvas, 12)
 	TransFrames[#TransFrames + 1] = Canvas
 	self.Canvas = Canvas
-
 	local Outline = new("Frame", { Name = "Outline", Size = UDim2.fromScale(1, 1), ZIndex = 20, Active = false, Parent = Main })
 	corner(Outline, 12)
 	self.OutlineStroke = stroke(Outline)
-
-	local BODY_H = BASE_H - HEADER_H - 1
-	local Body = new("Frame", { Name = "Body", Position = UDim2.fromOffset(0, HEADER_H + 1), Size = UDim2.fromOffset(BASE_W, BODY_H), Parent = Canvas })
+	local Body = new("Frame", { Name = "Body", Position = UDim2.fromOffset(0, HEADER_H + 1), Size = UDim2.new(1, 0, 1, -(HEADER_H + 1)), Parent = Canvas })
 	self.Body = Body
 	self._bgItems, self._bgTweens = {}, {}
 	Hooks[#Hooks + 1] = function() self:_bgRecolor() end
 	self:_applyBackground()
-
 	local Header = new("Frame", { Size = UDim2.new(1, 0, 0, HEADER_H), Bg = "Sidebar", BackgroundTransparency = Library.Transparency, Parent = Canvas })
 	TransFrames[#TransFrames + 1] = Header
 	gradient(Header, 205)
 	local _, headerCrown = iconTile(Header, "crown", 30, 18, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0) })
-
 	local TitleBlock = new("Frame", {
 		Position = UDim2.fromOffset(TITLE_X, 0), Size = UDim2.new(1, -(TITLE_X + CTRL_W + 20), 1, 0), ClipsDescendants = true, Parent = Header,
 	})
@@ -5882,7 +5539,6 @@ function Library:CreateWindow(opts)
 		Text = opts.Subtitle or "", TextSize = 11, Fg = "SubText", Position = UDim2.fromOffset(0, 26),
 		Size = UDim2.new(1, 0, 0, 13), TextTruncate = Enum.TextTruncate.AtEnd, Parent = TitleBlock,
 	})
-
 	local ctrls = new("Frame", {
 		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 0), Size = UDim2.fromOffset(CTRL_W, HEADER_H), ZIndex = 30, Parent = Main,
 	})
@@ -5890,14 +5546,20 @@ function Library:CreateWindow(opts)
 	new("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = ctrls,
 	})
-
 	self.StatsLabel = new("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -(CTRL_W + 20), 0.5, 0), Size = UDim2.fromOffset(118, 14),
 		TextXAlignment = Enum.TextXAlignment.Right, TextSize = 11, Fg = "SubText", Visible = false, Parent = Header,
 	})
-
 	local function ctrl(order, iconName, hoverColor, fn)
 		local slot = new("Frame", { Size = UDim2.fromOffset(CTRL_SLOT, HEADER_H), LayoutOrder = order, Parent = ctrls })
+		local cedge = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 3), Size = UDim2.fromOffset(CTRL_BTN, CTRL_BTN),
+			BackgroundColor3 = Theme.Element:Lerp(Kit.Black, 0.5), Parent = slot,
+		})
+		corner(cedge, 11)
+		Hooks[#Hooks + 1] = function(instant)
+			tween(cedge, { BackgroundColor3 = Theme.Element:Lerp(Kit.Black, 0.5) }, instant and 0 or 0.35)
+		end
 		local b = new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
 			Size = UDim2.fromOffset(CTRL_BTN, CTRL_BTN), Bg = "Element", Parent = slot,
@@ -5921,19 +5583,19 @@ function Library:CreateWindow(opts)
 			function()
 				tween(b, { BackgroundColor3 = hoverColor or Theme.Hover }, 0.15)
 				tween(bst, { Color = hoverColor or Theme.Accent }, 0.15)
-				tween(bsc, { Scale = 1.08 }, 0.12, Enum.EasingStyle.Quad)
+				tween(b, { Position = UDim2.new(0.5, 0, 0.5, -1) }, 0.12)
 				tint(hoverColor and Color3.new(1, 1, 1) or Theme.Text, 0.15)
 				if iconName == "close" then tween(ic, { Rotation = 90 }, 0.35, Enum.EasingStyle.Back) end
 			end,
 			function()
 				tween(b, { BackgroundColor3 = Theme.Element }, 0.2)
 				tween(bst, { Color = Theme.Stroke }, 0.2)
-				tween(bsc, { Scale = 1 }, 0.2)
+				tween(b, { Position = UDim2.fromScale(0.5, 0.5) }, 0.2)
 				tint(Theme.SubText, 0.2)
 				if iconName == "close" then tween(ic, { Rotation = 0 }, 0.35, Enum.EasingStyle.Back) end
 			end)
-		connect(hit.MouseButton1Down, function() tween(bsc, { Scale = 0.9 }, 0.06) end)
-		connect(hit.MouseButton1Up, function() tween(bsc, { Scale = 1 }, 0.25, Enum.EasingStyle.Back) end)
+		connect(hit.MouseButton1Down, function() tween(b, { Position = UDim2.new(0.5, 0, 0.5, 2) }, 0.05, Enum.EasingStyle.Quad) end)
+		connect(hit.MouseButton1Up, function() tween(b, { Position = UDim2.fromScale(0.5, 0.5) }, 0.25, Enum.EasingStyle.Back) end)
 		onClick(hit, function(pos)
 			FX.ripple(b, pos, hoverColor or Theme.Accent, { Radius = 11, Alpha = 0.7, Time = 0.45 })
 			FX.pop(ic, 1.45, 0.5)
@@ -5953,7 +5615,109 @@ function Library:CreateWindow(opts)
 		deadRight = CTRL_W + 14,
 		canDrag = function() return not self.Maximized end,
 	})
-
+	local gripHolder = new("Frame", {
+		Name = "Grip", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -1, 1, -1),
+		Size = UDim2.fromOffset(GRIP, GRIP), ZIndex = 40, Parent = Main,
+	})
+	self.Grip = gripHolder
+	self.GripOn = true
+	local gripEdge = new("Frame", {
+		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -6, 1, -6), Size = UDim2.fromOffset(16, 16),
+		BackgroundColor3 = Theme.Element:Lerp(Kit.Black, 0.5), ZIndex = 1, Parent = gripHolder,
+	})
+	corner(gripEdge, 5)
+	Hooks[#Hooks + 1] = function(instant)
+		tween(gripEdge, { BackgroundColor3 = Theme.Element:Lerp(Kit.Black, 0.5) }, instant and 0 or 0.35)
+	end
+	local gripFace = new("Frame", {
+		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -6, 1, -9), Size = UDim2.fromOffset(16, 16),
+		Bg = "Element", ZIndex = 2, Parent = gripHolder,
+	})
+	corner(gripFace, 5)
+	local gripStroke = stroke(gripFace)
+	gradient(gripFace, 185)
+	local gripDots = {}
+	for _, p in ipairs({ { 11, 3 }, { 7, 7 }, { 11, 7 }, { 3, 11 }, { 7, 11 }, { 11, 11 } }) do
+		local d = new("Frame", { Position = UDim2.fromOffset(p[1], p[2]), Size = UDim2.fromOffset(2, 2), Bg = "SubText", ZIndex = 3, Parent = gripFace })
+		round(d)
+		gripDots[#gripDots + 1] = d
+	end
+	local sizeTag = new("TextLabel", {
+		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -8), Size = UDim2.fromOffset(0, 20), AutomaticSize = AutoX,
+		Bg = "Card", Fg = "Text", Font = FONT_BOLD, TextSize = 10, Text = "", TextXAlignment = Enum.TextXAlignment.Center,
+		Visible = false, ZIndex = 45, Parent = gripHolder,
+	})
+	corner(sizeTag, 6)
+	stroke(sizeTag)
+	padding(sizeTag, 8, 0, 8, 0)
+	local rs = { on = false, last = 0 }
+	local function gripLook(state)
+		local col = state == 0 and Theme.SubText or Theme.Accent
+		for _, d in ipairs(gripDots) do tween(d, { BackgroundColor3 = col }, 0.12) end
+		tween(gripStroke, { Color = state == 0 and Theme.Stroke or Theme.Accent }, 0.15)
+		tween(gripFace, { Position = UDim2.new(1, -6, 1, state == 2 and -6 or (state == 1 and -10 or -9)) },
+			state == 2 and 0.05 or 0.16, state == 2 and Enum.EasingStyle.Quad or Enum.EasingStyle.Quint)
+	end
+	local gripHit = hitZone(gripHolder, { Size = UDim2.fromScale(1, 1), ZIndex = 5 })
+	local function finish()
+		if not rs.on then return end
+		rs.on = false
+		self._resizing = false
+		sizeTag.Visible = false
+		gripLook(0)
+		self:_saveSize()
+	end
+	onHover(gripHit,
+		function() if not rs.on then gripLook(1) end end,
+		function() if not rs.on then gripLook(0) end end)
+	connect(gripHit.InputBegan, function(i)
+		local t = i.UserInputType
+		if t ~= Enum.UserInputType.MouseButton1 and t ~= Enum.UserInputType.Touch then return end
+		if self.Maximized or rs.on then return end
+		local now = os.clock()
+		if now - rs.last < 0.35 then
+			rs.last = 0
+			self:ResetSize()
+			return
+		end
+		rs.last = now
+		closePopup()
+		if SliderLock.Active then pcall(SliderLock.Active) end
+		rs.on, rs.input = true, i
+		rs.p0, rs.w0, rs.h0, rs.pos0 = i.Position, WinW, WinH, Main.Position
+		rs.s = math.max(getScale(), 0.05)
+		rs.ap = Main.AbsolutePosition
+		rs.vp = Gui.AbsoluteSize
+		self._resizing = true
+		gripLook(2)
+		sizeTag.Text = string.format("%d x %d", WinW, WinH)
+		sizeTag.Visible = true
+	end)
+	connect(UserInputService.InputChanged, function(i)
+		if not rs.on then return end
+		local t = i.UserInputType
+		if t == Enum.UserInputType.MouseMovement or (t == Enum.UserInputType.Touch and rs.input.UserInputType == Enum.UserInputType.Touch) then
+			local dx = (i.Position.X - rs.p0.X) / rs.s
+			local dy = (i.Position.Y - rs.p0.Y) / rs.s
+			local maxW = math.max(MIN_W, math.min(MAX_W, (rs.vp.X - rs.ap.X - 6) / rs.s))
+			local maxH = math.max(MIN_H, math.min(MAX_H, (rs.vp.Y - rs.ap.Y - 6) / rs.s))
+			local nw = math.floor(math.clamp(rs.w0 + dx, MIN_W, maxW))
+			local nh = math.floor(math.clamp(rs.h0 + dy, MIN_H, maxH))
+			if nw ~= WinW or nh ~= WinH then
+				WinW, WinH = nw, nh
+				Main.Size = UDim2.fromOffset(nw, nh)
+				Main.Position = UDim2.new(rs.pos0.X.Scale, rs.pos0.X.Offset + (nw - rs.w0) * rs.s / 2, rs.pos0.Y.Scale, rs.pos0.Y.Offset + (nh - rs.h0) * rs.s / 2)
+				sizeTag.Text = string.format("%d x %d", nw, nh)
+			end
+		end
+	end)
+	connect(UserInputService.InputEnded, function(i)
+		if not rs.on then return end
+		local t = i.UserInputType
+		if i == rs.input or (t == rs.input.UserInputType and (t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch)) then
+			finish()
+		end
+	end)
 	new("Frame", { Position = UDim2.fromOffset(0, -1), Size = UDim2.new(1, 0, 0, 1), Bg = "Stroke", ZIndex = 2, Parent = Body })
 	local shim = new("Frame", { Position = UDim2.fromOffset(0, -1), Size = UDim2.new(1, 0, 0, 1), Bg = "Accent", ZIndex = 3, Parent = Body })
 	local grad = new("UIGradient", {
@@ -5963,11 +5727,9 @@ function Library:CreateWindow(opts)
 	local shimLoop = TweenService:Create(grad, TweenInfo.new(2.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Offset = Vector2.new(1, 0) })
 	shimLoop:Play()
 	self._loops[#self._loops + 1] = shimLoop
-
 	local Sidebar = new("Frame", { Position = UDim2.fromOffset(0, 0), Size = UDim2.new(0, SIDEBAR_W, 1, 0), Bg = "Sidebar", BackgroundTransparency = Library.Transparency, ClipsDescendants = true, Parent = Body })
 	TransFrames[#TransFrames + 1] = Sidebar
 	new("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0, 1, 1, 0), Bg = "Stroke", Parent = Sidebar })
-
 	local SEARCH_H = 38
 	local searchHit, searchHitZone = hitZone(Sidebar, {
 		Position = UDim2.fromOffset(0, 0), Size = UDim2.new(1, 0, 0, SEARCH_H + 12), ZIndex = 49,
@@ -5976,6 +5738,7 @@ function Library:CreateWindow(opts)
 	corner(search, 11)
 	local sst = stroke(search)
 	gradient(search, 200)
+	Kit.bevel(search, 10)
 	local searchIcon = makeIcon(search, "search", 16, "SubText", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), ZIndex = 51 })
 	local sbox = new("TextBox", { Position = UDim2.fromOffset(34, 0), Size = UDim2.new(1, -(34 + (UserInputService.TouchEnabled and 32 or 50)), 1, 0), PlaceholderText = "Search...", Text = "", Fg = "Text", Ph = "SubText", TextSize = 13, ClipsDescendants = true, ZIndex = 52, Parent = search })
 	self.SearchBox = sbox
@@ -6015,7 +5778,6 @@ function Library:CreateWindow(opts)
 		if kbdBadge then kbdBadge.Visible = not has end
 		self:_queueFilter(sbox.Text)
 	end)
-
 	local hasDisc = type(opts.Discord) == "string" and opts.Discord ~= ""
 	self._discExtra = hasDisc and 38 or 0
 	self.TabClip = new("Frame", {
@@ -6027,11 +5789,11 @@ function Library:CreateWindow(opts)
 	})
 	padding(self.TabList, 8, 2, 8, 6)
 	listLayout(self.TabList, 3)
-
 	self.UserCard = new("Frame", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 8, 1, -8), Size = UDim2.new(1, -16, 0, 44), Bg = "Element", ZIndex = 5, Parent = Sidebar })
 	corner(self.UserCard, 11)
 	stroke(self.UserCard)
 	gradient(self.UserCard, 200)
+	Kit.bevel(self.UserCard, 10)
 	local av = new("ImageLabel", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.fromOffset(28, 28), Bg = "Hover", Parent = self.UserCard })
 	corner(av, 14)
 	task.spawn(function()
@@ -6042,7 +5804,6 @@ function Library:CreateWindow(opts)
 	end)
 	new("TextLabel", { Text = LocalPlayer.DisplayName, Font = FONT_BOLD, TextSize = 12, Fg = "Text", Position = UDim2.fromOffset(44, 6), Size = UDim2.new(1, -50, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, Parent = self.UserCard })
 	new("TextLabel", { Text = "@" .. LocalPlayer.Name, TextSize = 10, Fg = "SubText", Position = UDim2.fromOffset(44, 22), Size = UDim2.new(1, -50, 0, 14), TextTruncate = Enum.TextTruncate.AtEnd, Parent = self.UserCard })
-
 	if hasDisc then
 		local blurple = Color3.fromRGB(88, 101, 242)
 		local dbtn = new("Frame", {
@@ -6071,9 +5832,7 @@ function Library:CreateWindow(opts)
 			Library:Notify({ Title = "Discord", Content = ok and "Invite copied to clipboard." or "Your executor has no clipboard.", Icon = "chat", Type = ok and "success" or "warning" })
 		end)
 	end
-
 	self.Content = new("Frame", { Position = UDim2.fromOffset(SIDEBAR_W + 1, 0), Size = UDim2.new(1, -(SIDEBAR_W + 1), 1, 0), ClipsDescendants = true, Parent = Body })
-
 	self.SearchPage = new("CanvasGroup", {
 		Name = "SearchPage", AnchorPoint = Vector2.new(0.5, 0.5), Position = PAGE_REST, Size = UDim2.fromScale(1, 1),
 		Visible = false, GroupTransparency = 1, ZIndex = 5, Parent = self.Content,
@@ -6088,7 +5847,6 @@ function Library:CreateWindow(opts)
 	listLayout(sHead, 2)
 	new("TextLabel", { Text = "Search", Font = FONT_BOLD, TextSize = 20, Fg = "Text", Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 1, Parent = sHead })
 	self.SearchInfo = new("TextLabel", { Text = "", TextSize = 12, Fg = "SubText", Size = UDim2.new(1, 0, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 2, Parent = sHead })
-
 	if opts.ToggleButton ~= false then
 		local PH, THK, PAD = 36, 6, 9
 		local BLACK, WHITE = Color3.new(0, 0, 0), Color3.new(1, 1, 1)
@@ -6113,7 +5871,6 @@ function Library:CreateWindow(opts)
 			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
 			Size = UDim2.fromOffset(PW, PHT), Parent = stage,
 		})
-
 		local function shade(a) return Theme.Accent:Lerp(BLACK, a) end
 		local ext = {}
 		for i = 1, 3 do
@@ -6124,7 +5881,6 @@ function Library:CreateWindow(opts)
 			corner(f, 12)
 			ext[i] = f
 		end
-
 		local face = new("Frame", { Size = UDim2.new(1, 0, 0, PH), Bg = "Card", ZIndex = 5, Parent = root })
 		corner(face, 12)
 		stroke(face)
@@ -6133,7 +5889,6 @@ function Library:CreateWindow(opts)
 			Position = UDim2.fromOffset(12, 1), Size = UDim2.new(1, -24, 0, 1),
 			BackgroundColor3 = WHITE, BackgroundTransparency = 0.9, Parent = face,
 		})
-
 		local tile, crown = iconTile(face, "crown", 26, 15, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 7, 0.5, 0) })
 		local keyW = IS_TOUCH and 0 or (math.ceil(textWidth(self.ToggleKey.Name, 10, FONT_BOLD)) + 14)
 		local textW = keyW > 0 and -(42 + keyW + 18) or -52
@@ -6157,13 +5912,11 @@ function Library:CreateWindow(opts)
 				TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), Parent = cap,
 			})
 		end
-
 		Hooks[#Hooks + 1] = function(instant)
 			for i, f in ipairs(ext) do
 				tween(f, { BackgroundColor3 = shade(0.34 + i * 0.1) }, instant and 0 or 0.35)
 			end
 		end
-
 		local hov, tx, ty, cx, cy, ph, pp = false, 0, 0, 0, 0, 0, 0
 		local pressT, dragged, pressAbs = 0, false, Vector2.new()
 		local function aim(pos)
@@ -6173,7 +5926,6 @@ function Library:CreateWindow(opts)
 			tx = math.clamp((p.X - (ap.X + as.X / 2)) / (as.X / 2), -1, 1)
 			ty = math.clamp((p.Y - (ap.Y + as.Y / 2)) / (as.Y / 2), -1, 1)
 		end
-
 		connect(RunService.Heartbeat, function(dt)
 			if not holder.Visible then return end
 			if pressT == 1 and not dragged and (holder.AbsolutePosition - pressAbs).Magnitude > 3 then
@@ -6195,7 +5947,6 @@ function Library:CreateWindow(opts)
 			end
 			faceGrad.Rotation = 215 + cx * 28
 		end)
-
 		local appearTok = 0
 		local function sync(open, instant)
 			appearTok += 1
@@ -6245,7 +5996,6 @@ function Library:CreateWindow(opts)
 		end
 		sync(self.Visible, true)
 		self._pillSync = function(open) sync(open) end
-
 		local hit = hitZone(holder, {
 			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
 			Size = UDim2.fromOffset(PW, PHT), ZIndex = 6,
@@ -6286,7 +6036,6 @@ function Library:CreateWindow(opts)
 			self:Toggle(true)
 		end)
 	end
-
 	connect(UserInputService.InputBegan, function(i, gp)
 		if i.UserInputType ~= Enum.UserInputType.Keyboard then return end
 		if Library.Listening then return end
@@ -6314,7 +6063,6 @@ function Library:CreateWindow(opts)
 		end
 		if not gp and i.KeyCode == self.ToggleKey then self:Toggle() end
 	end)
-
 	local cam = workspace.CurrentCamera
 	if cam then
 		local rtok = 0
@@ -6328,12 +6076,14 @@ function Library:CreateWindow(opts)
 				if math.abs(ScaleObj.Scale - goal) > 0.004 then
 					tween(ScaleObj, { Scale = goal }, 0.25, Enum.EasingStyle.Quint)
 				end
+				task.delay(0.3, function()
+					if Main.Parent then self:_fitSize(goal) end
+				end)
 			end)
 		end
 		connect(cam:GetPropertyChangedSignal("ViewportSize"), rescale)
 		connect(UserInputService.TextBoxFocusReleased, rescale)
 	end
-
 	local acc, frames = 0, 0
 	connect(RunService.Heartbeat, function(dt)
 		acc += dt
@@ -6346,60 +6096,61 @@ function Library:CreateWindow(opts)
 			if self.ShowFPS or self.ShowPing then self:_statsRefresh() end
 		end
 	end)
-
 	self:_init3D(headerCrown)
-
 	Canvas.GroupTransparency = 1
 	tween(Canvas, { GroupTransparency = 0 }, 0.3, Enum.EasingStyle.Quad)
-
+	task.defer(function()
+		if Main.Parent then self:_fitSize() end
+	end)
 	table.insert(Library.Windows, self)
 	return self
 end
-
 do
 	local Motion = {
 		Tilt = true, Wave = true, Depth = true,
 		Gyro = true, InvertGyro = false, Strength = 1,
 	}
 	Library.Motion = Motion
-
 	function Library:SetMotion(key, value)
 		Motion[key] = value
 	end
-
 	local KP = NumberSequenceKeypoint.new
 	local PLATES = IS_TOUCH and 2 or 3
 	local IDLE_STEP = IS_TOUCH and 1 / 24 or 1 / 30
-
 	local function spring(s, target, dt, k, d)
 		s.v += ((target - s.x) * k - s.v * d) * dt
 		s.x += s.v * dt
 	end
-
 	local function sat(x)
 		return math.clamp(x, -1, 1)
 	end
-
 	local function aim(x, y, cx, cy, as)
 		local dx, dy = (x - cx) / (as.X * 0.6), (y - cy) / (as.Y * 0.6)
 		local fade = 1 - math.clamp((math.max(math.abs(dx), math.abs(dy)) - 1) / 1.2, 0, 1)
 		return sat(dx) * fade, sat(dy) * fade
 	end
-
 	function Window:_init3D(headerCrown)
 		local main = self.Main
 		local outline = main:FindFirstChild("Outline")
 		local crownTile = headerCrown and headerCrown.Parent
 		self.FxShow = self.Visible ~= false
-
 		local tilt = new("Frame", {
 			Name = "Tilt", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
 			Size = UDim2.fromScale(1, 1), Parent = main,
 		})
-
 		local shadowHolder = self.Shadow and self.Shadow.Holder
 		if shadowHolder then shadowHolder.Parent = tilt end
-
+		local slab = new("Frame", {
+			Name = "Slab", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, Kit.Thick.Window),
+			Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Accent:Lerp(Kit.Black, 0.62), BackgroundTransparency = 1, ZIndex = 0, Parent = tilt,
+		})
+		corner(slab, 12)
+		TransFrames[#TransFrames + 1] = slab
+		self.Slab = slab
+		tween(slab, { BackgroundTransparency = Library.Transparency }, 0.35, Enum.EasingStyle.Quad)
+		Hooks[#Hooks + 1] = function(instant)
+			tween(slab, { BackgroundColor3 = Theme.Accent:Lerp(Kit.Black, 0.62) }, instant and 0 or 0.35)
+		end
 		local plates = {}
 		for k = 1, PLATES do
 			local f = new("Frame", {
@@ -6411,11 +6162,10 @@ do
 			pst.Transparency = 1
 			plates[k] = { Frame = f, Stroke = pst, Base = 0.2 + k * 0.2 }
 		end
-
 		self.Canvas.Parent = tilt
 		if outline then outline.Parent = tilt end
 		self.Ctrls.Parent = tilt
-
+		if self.Grip then self.Grip.Parent = tilt end
 		local glare, glareGrad, rimStroke, rimGrad
 		if outline then
 			glare = new("Frame", {
@@ -6437,18 +6187,15 @@ do
 				Parent = rimStroke,
 			})
 		end
-
 		local px, py, lift, press = { x = 0, v = 0 }, { x = 0, v = 0 }, { x = 0, v = 0 }, { x = 0, v = 0 }
 		local st = {
 			show = 1, calm = 1, acc = 0, parked = false, cfg = -1, t0 = os.clock(),
 			touch = nil, down = false, lcx = nil, lcy = nil, base = nil,
 		}
-
 		local function inside(p)
 			local ap, as = main.AbsolutePosition, main.AbsoluteSize
 			return p.X >= ap.X and p.X <= ap.X + as.X and p.Y >= ap.Y and p.Y <= ap.Y + as.Y
 		end
-
 		connect(UserInputService.InputBegan, function(i)
 			if not self.FxShow then return end
 			local ty = i.UserInputType
@@ -6462,7 +6209,6 @@ do
 			if i == st.touch then st.touch = nil end
 			if i.UserInputType == Enum.UserInputType.MouseButton1 then st.down = false end
 		end)
-
 		local function gyro(dt)
 			if not (Motion.Gyro and UserInputService.GyroscopeEnabled) then return 0, 0 end
 			local ok, _, cf = pcall(UserInputService.GetDeviceRotation, UserInputService)
@@ -6473,7 +6219,6 @@ do
 			local sign = Motion.InvertGyro and -1 or 1
 			return sat(ry / 0.3) * sign, sat(-rx / 0.3) * sign
 		end
-
 		local L = {}
 		local function chg(k, v, eps)
 			local o = L[k]
@@ -6483,7 +6228,6 @@ do
 			end
 			return false
 		end
-
 		connect(RunService.RenderStepped, function(rawDt)
 			local goal = self.FxShow and 1 or 0
 			if not main.Visible or (goal == 0 and st.show < 0.01) then
@@ -6495,7 +6239,6 @@ do
 				st.touch = nil
 				touch = nil
 			end
-
 			local S = Motion.Strength
 			local wave = Motion.Wave and 1 or 0
 			local cfg = (Motion.Depth and 1 or 0) + (Motion.Tilt and 2 or 0) + Library.Transparency * 7 + S * 13
@@ -6503,12 +6246,10 @@ do
 				st.cfg = cfg
 				st.parked = false
 			end
-
 			local ap, as = main.AbsolutePosition, main.AbsoluteSize
 			local cx, cy = ap.X + as.X * 0.5, ap.Y + as.Y * 0.5
 			local typing = UserInputService:GetFocusedTextBox() ~= nil
-			local still = (SliderLock.Active or Library.OpenPopup or Library._confirm or typing) and 0 or 1
-
+			local still = (SliderLock.Active or Library.OpenPopup or Library._confirm or typing or self._resizing) and 0 or 1
 			local tx, ty, near = 0, 0, 0
 			if still == 1 and Motion.Tilt and as.X > 0 and as.Y > 0 then
 				if touch then
@@ -6523,7 +6264,6 @@ do
 					tx, ty = gyro(rawDt)
 				end
 			end
-
 			local swx, swy = 0, 0
 			if st.lcx and still == 1 and Motion.Tilt and rawDt > 0 then
 				local k = 1 / (math.max(rawDt, 1e-3) * 1800)
@@ -6531,13 +6271,11 @@ do
 				swy = sat(-(cy - st.lcy) * k)
 			end
 			st.lcx, st.lcy = cx, cy
-
 			local pressing = (st.down or touch ~= nil) and 1 or 0
 			local moving = math.abs(px.x) + math.abs(py.x) + math.abs(px.v) + math.abs(py.v) + math.abs(lift.x) + math.abs(press.x) > 0.004
 			local active = near > 0 or pressing > 0 or moving
 				or math.abs(tx) + math.abs(ty) > 0.01 or math.abs(swx) + math.abs(swy) > 0.02
 				or math.abs(goal - st.show) > 0.003 or math.abs(st.calm - still) > 0.01
-
 			st.acc += rawDt
 			if not active then
 				if wave == 0 then
@@ -6551,7 +6289,6 @@ do
 			end
 			local dt = math.min(st.acc, 1 / 20)
 			st.acc = 0
-
 			local n = dt > 0.03 and 2 or 1
 			local h = dt / n
 			local gx, gy = sat(tx + swx * 0.9), sat(ty + swy * 0.9)
@@ -6565,31 +6302,25 @@ do
 			if gy == 0 and math.abs(py.x) < 0.0015 and math.abs(py.v) < 0.003 then py.x, py.v = 0, 0 end
 			if near == 0 and math.abs(lift.x) < 0.0015 and math.abs(lift.v) < 0.003 then lift.x, lift.v = 0, 0 end
 			if pressing == 0 and math.abs(press.x) < 0.0015 and math.abs(press.v) < 0.003 then press.x, press.v = 0, 0 end
-
 			st.show += (goal - st.show) * math.min(1, dt * 12)
 			st.calm += (still - st.calm) * math.min(1, dt * 9)
 			local show, calm = st.show, st.calm
 			local t = os.clock() - st.t0
-
 			local amp = S * (IS_TOUCH and 0.8 or 1)
 			local RX, RY = px.x * amp * calm, py.x * amp * calm
 			local lf, pr = lift.x * calm, press.x * calm
-
 			local tpx, tpy = snap(RX * 4, 0.5), snap(RY * 3 + pr * 1.5, 0.5)
 			local c1, c2 = chg("tpx", tpx, 0.2), chg("tpy", tpy, 0.2)
 			if c1 or c2 then tilt.Position = UDim2.new(0.5, tpx, 0.5, tpy) end
-
 			local wx = (math.sin(t * 0.9) + 0.45 * math.sin(t * 1.9 + 1.3)) * 0.7 * wave
 			local wy = (math.cos(t * 0.75 + 0.6) + 0.45 * math.sin(t * 1.5 + 2.1)) * 0.7 * wave
 			local bob = (math.sin(t * 1.15) + 0.35 * math.sin(t * 2.3 + 0.8)) * wave
 			local qx, qy = RX + wx * 0.3 * S * calm, RY + wy * 0.3 * S * calm
-
 			if shadowHolder then
 				local sx, sy = -qx * 9, 5 + lf * 4 - pr * 2 - qy * 9 - bob * 1.6 * calm
 				local s1, s2 = chg("shx", sx, 0.05), chg("shy", sy, 0.05)
 				if s1 or s2 then shadowHolder.Position = UDim2.new(0.5, sx, 0.5, sy) end
 			end
-
 			local a = show * (Motion.Depth and 1 or 0) * (1 - math.clamp((Library.Transparency - 0.1) * 1.4, 0, 0.9))
 			local aChanged = chg("plA", a, 0.004)
 			for k, pl in ipairs(plates) do
@@ -6601,7 +6332,6 @@ do
 					pl.Stroke.Transparency = 1 - 0.6 * a * (1 - (k - 1) * 0.2)
 				end
 			end
-
 			if glare then
 				local go = math.clamp(qx * 0.55 + qy * 0.2, -0.85, 0.85)
 				if chg("glo", go, 0.004) then glareGrad.Offset = Vector2.new(go, 0) end
@@ -6613,7 +6343,6 @@ do
 				local rt = 1 - math.clamp(0.12 + mag * 0.6, 0, 1) * show
 				if chg("rimt", rt, 0.004) then rimStroke.Transparency = rt end
 			end
-
 			local IX, IY = RX * 2.4, RY * 2.4
 			if crownTile then
 				local ix, iy = snap(IX, 0.5), snap(IY, 0.5)
@@ -6630,18 +6359,13 @@ do
 				local k1, k2 = chg("ucx", ix, 0.2), chg("ucy", iy, 0.2)
 				if k1 or k2 then self.UserCard.Position = UDim2.new(0, 8 + ix, 1, -8 + iy) end
 			end
-
 			st.parked = (not active) and wave == 0
 		end)
 	end
 end
-
 env.__ZystrixUI = Library
-
 if env.ZystrixUI_NoDemo or env.MystrixUI_NoDemo then return Library end
-
 local function RunDemo()
-
 local Window = Library:CreateWindow({
 	Title = "ZystrixUI Tester",
 	Subtitle = "Component playground",
@@ -6650,9 +6374,7 @@ local Window = Library:CreateWindow({
 	ToggleKey = Enum.KeyCode.J,
 	Discord = "discord.gg/yourinvite",
 })
-
 local function stamp() return os.date("%H:%M:%S") end
-
 Window:CreateDashboard({
 	Name = "Home", Icon = "home", Group = "TESTER",
 	Discord = "discord.gg/yourinvite",
@@ -6666,7 +6388,6 @@ about:AddLabel({ Title = "ZystrixUI Tester", Text = "Pick a tab in the sidebar t
 about:AddButton({ Name = "Test Notification", Icon = "bell", Style = "Primary", Tooltip = "Shows a toast in the active theme accent.", TooltipTitle = "Notification", Callback = function()
 	Library:Notify({ Title = "Tester", Content = "Notification shown at " .. stamp(), Icon = "info" })
 end })
-
 local mon = Overview:AddSection({ Name = "Flag Monitor", Icon = "eye", Side = "Right" })
 local monLabel = mon:AddLabel({ Title = "Flags", Text = "Press Refresh to see the value of every flag." })
 mon:AddButton({ Name = "Refresh Flags", Icon = "refresh", Callback = function()
@@ -6683,7 +6404,6 @@ mon:AddButton({ Name = "Refresh Flags", Icon = "refresh", Callback = function()
 	end
 	monLabel:Set("Flags (" .. #keys .. ")", #lines > 0 and table.concat(lines, "\n") or "No flags yet.")
 end })
-
 local Switches = Window:AddTab({
 	Name = "Switch", Icon = "toggle", Group = "TESTER",
 	Description = "Switch test: large tap area, instant response, no flicker.",
@@ -6701,7 +6421,6 @@ sb:AddToggle({ Name = "Spam Click", Icon = "click", Flag = "T_Spam", Callback = 
 	spamCount += 1
 	spamLabel:Set("Changes: " .. spamCount)
 end })
-
 local sm = Switches:AddSection({ Name = "Master / Child", Icon = "link", Side = "Right" })
 local childFlags = { "T_Child1", "T_Child2", "T_Child3" }
 local countLabel = sm:AddLabel({ Title = "Enabled: 0 / 3", Text = "The master switch turns every child on / off." })
@@ -6722,7 +6441,6 @@ end })
 for i, f in ipairs(childFlags) do
 	sm:AddToggle({ Name = "Child " .. i, Icon = "check", Flag = f, Callback = recount })
 end
-
 local Sliders = Window:AddTab({
 	Name = "Slider", Icon = "slider", Group = "TESTER",
 	Description = "Slider test: drag, tap on the track, or type a value in the small box.",
@@ -6736,7 +6454,6 @@ si:AddSlider({ Name = "Jump Power", Icon = "up", Min = 0, Max = 300, Default = 5
 	lastInt:Set(nil, "Jump Power = " .. v)
 end })
 si:AddSlider({ Name = "Percent", Icon = "percent", Min = 0, Max = 100, Default = 50, Increment = 1, Flag = "S_Percent", Suffix = "%" })
-
 local sd = Sliders:AddSection({ Name = "Decimal & Range", Icon = "percent", Side = "Right" })
 local lastDec = sd:AddLabel({ Title = "Last value", Text = "-" })
 sd:AddSlider({ Name = "Gravity Scale", Icon = "down", Min = 0, Max = 2, Default = 1, Increment = 0.05, Flag = "S_Gravity", Suffix = "x", Callback = function(v)
@@ -6758,7 +6475,6 @@ sd:AddButton({ Name = "Reset All Sliders", Icon = "refresh", Callback = function
 	lastInt:Set(nil, "Reset")
 	lastDec:Set(nil, "Reset")
 end })
-
 local Inputs = Window:AddTab({
 	Name = "Input", Icon = "input", Group = "TESTER",
 	Description = "Input box and keybind test.",
@@ -6789,7 +6505,6 @@ it:AddTextbox({ Name = "Long Text", Icon = "edit", Placeholder = "Truncation tes
 it:AddButton({ Name = "Clear Username", Icon = "trash", Callback = function()
 	nameBox:Set("")
 end })
-
 local ik = Inputs:AddSection({ Name = "Keybind", Icon = "keyboard", Side = "Right" })
 ik:AddLabel({ Title = "How to use", Text = "Tap the button, then press a keyboard key. Esc = cancel, Backspace = clear." })
 ik:AddKeybind({ Name = "Action Key", Icon = "keyboard", Default = Enum.KeyCode.F, Flag = "K_Action", Callback = function(k)
@@ -6800,7 +6515,6 @@ ik:AddKeybind({ Name = "No Default", Icon = "key", Flag = "K_None", Callback = f
 end, Changed = function(k)
 	Library:Notify({ Title = "Keybind", Content = "Changed to: " .. (k and k.Name or "None"), Duration = 2 })
 end })
-
 local Drops = Window:AddTab({
 	Name = "Dropdown", Icon = "list", Group = "TESTER", Badge = "New",
 	Description = "Dropdown test: short list, long list (scroll) and dynamic list.",
@@ -6815,7 +6529,6 @@ for i = 1, 14 do longList[i] = "Item " .. i end
 dr:AddDropdown({ Name = "Long List", Icon = "grid", Options = longList, Placeholder = "Select an item...", Flag = "D_Long", Callback = function(v)
 	dropEcho:Set(nil, "Long List = " .. tostring(v))
 end })
-
 local dd = Drops:AddSection({ Name = "Dynamic", Icon = "refresh", Side = "Right" })
 local dynItems = { "Alpha", "Beta" }
 local dyn = dd:AddDropdown({ Name = "Dynamic List", Icon = "refresh", Options = dynItems, Placeholder = "Empty", Flag = "D_Dyn" })
@@ -6827,7 +6540,6 @@ dd:AddButton({ Name = "Reset List", Icon = "refresh", Callback = function()
 	dynItems = { "Alpha", "Beta" }
 	dyn:Refresh(dynItems)
 end })
-
 local Buttons = Window:AddTab({
 	Name = "Button", Icon = "click", Group = "TESTER",
 	Description = "Button and notification test.",
@@ -6848,7 +6560,6 @@ counterBtn = bt:AddButton({ Name = "Clicked: 0", Icon = "plus", Callback = funct
 	clicks += 1
 	counterBtn:SetText("Clicked: " .. clicks)
 end })
-
 local nt = Buttons:AddSection({ Name = "Notifications", Icon = "info", Side = "Right" })
 nt:AddButton({ Name = "Short Notification", Icon = "bell", Callback = function()
 	Library:Notify({ Title = "Short", Content = "Hello!", Duration = 3 })
@@ -6876,7 +6587,6 @@ nt:AddButton({ Name = "Spam 3 Notifications", Icon = "bell", Callback = function
 		end)
 	end
 end })
-
 nt:AddButton({ Name = "Action Notification", Icon = "bell", ButtonText = "Actions", Tooltip = "Toast with buttons.", Callback = function()
 	Library:Notify({
 		Title = "Update available", Content = "A new version is ready to install.", Type = "info", Duration = 8,
@@ -6896,7 +6606,6 @@ nt:AddButton({ Name = "Progress Notification", Icon = "play", ButtonText = "Run"
 		h:Update({ Title = "Done", Content = "Download complete.", Type = "success", Duration = 3 })
 	end)
 end })
-
 local dlg = Buttons:AddSection({ Name = "Dialogs", Icon = "shield", Side = "Left" })
 dlg:AddButton({ Name = "Alert", Icon = "info", ButtonText = "Open", Callback = function()
 	Library:Alert({ Title = "Heads up", Content = "Single-button dialog.", Type = "info" })
@@ -6912,9 +6621,7 @@ dlg:AddButton({ Name = "Danger + Countdown", Icon = "trash", ButtonText = "Open"
 	Library:Confirm({ Title = "Wipe data?", Content = "This cannot be undone.", Type = "error", Icon = "trash", ConfirmText = "Wipe", Remember = "demo_wipe",
 		Callback = function() Library:Notify({ Title = "Wiped", Content = "Nothing was harmed.", Type = "warning" }) end })
 end })
-
 local Layout = Window:AddTab({ Name = "Layout", Icon = "grid", Group = "TESTER", NoPage = true })
-
 local colTab = Layout:AddSubTab({ Name = "Columns", Icon = "columns", Description = "Two columns side by side." })
 local cl = colTab:AddSection({ Name = "Left Column", Icon = "columns", Side = "Left" })
 cl:AddLabel({ Title = "Left", Text = "This section is in the left column." })
@@ -6922,14 +6629,12 @@ cl:AddToggle({ Name = "Left Toggle", Icon = "toggle", Flag = "L_Left" })
 local cr = colTab:AddSection({ Name = "Right Column", Icon = "columns", Side = "Right" })
 cr:AddLabel({ Title = "Right", Text = "This section is in the right column." })
 cr:AddToggle({ Name = "Right Toggle", Icon = "toggle", Flag = "L_Right" })
-
 local scrollTab = Layout:AddSubTab({ Name = "Scroll", Icon = "down", Description = "Test a long page with many elements." })
 local ls = scrollTab:AddSection({ Name = "Many Elements", Icon = "list" })
 for i = 1, 14 do
 	ls:AddToggle({ Name = "Toggle #" .. i, Icon = "hash", Flag = "L_Many" .. i })
 end
 ls:AddSlider({ Name = "Bottom Slider", Icon = "slider", Min = 0, Max = 100, Default = 40, Flag = "L_Bottom" })
-
 local colpTab = Layout:AddSubTab({ Name = "Collapse", Icon = "list", Description = "Collapsible sections." })
 local c1 = colpTab:AddSection({ Name = "Open (tap the header)", Icon = "chevron" })
 c1:AddToggle({ Name = "Content A", Icon = "check", Flag = "L_A" })
@@ -6937,7 +6642,6 @@ c1:AddToggle({ Name = "Content B", Icon = "check", Flag = "L_B" })
 local c2 = colpTab:AddSection({ Name = "Collapsed at start", Icon = "chevron", Collapsed = true })
 c2:AddToggle({ Name = "Content C", Icon = "check", Flag = "L_C" })
 c2:AddSlider({ Name = "Content D", Icon = "slider", Min = 0, Max = 10, Default = 5, Flag = "L_D" })
-
 do
 	local function fmt(v)
 		local t = typeof(v)
@@ -6950,12 +6654,10 @@ do
 		end
 		return tostring(v)
 	end
-
 	local Choice = Window:AddTab({
 		Name = "Choice", Icon = "check", Group = "TESTER",
 		Description = "Checkbox, radio, segmented control and multi select chips.",
 	})
-
 	local ck = Choice:AddSection({ Name = "Checkbox", Icon = "check", Side = "Left" })
 	ck:AddCheckbox({ Name = "Option A", Icon = "check", Flag = "C_A" })
 	ck:AddCheckbox({ Name = "Option B", Icon = "check", Default = true, Flag = "C_B" })
@@ -6984,7 +6686,6 @@ do
 	for i, f in ipairs(groupFlags) do
 		ck:AddCheckbox({ Name = "Item " .. i, Icon = "hash", Flag = f, Callback = regroup })
 	end
-
 	local ch = Choice:AddSection({ Name = "Chips", Icon = "hash", Side = "Left" })
 	local chipInfo = ch:AddLabel({ Title = "Selected", Text = "Coins, Gems" })
 	ch:AddChips({
@@ -6993,7 +6694,6 @@ do
 			chipInfo:Set(nil, #list > 0 and table.concat(list, ", ") or "Nothing selected")
 		end,
 	})
-
 	local rd = Choice:AddSection({ Name = "Radio and Segmented", Icon = "list", Side = "Right" })
 	local choiceInfo = rd:AddLabel({ Title = "Last change", Text = "-" })
 	rd:AddRadio({
@@ -7012,12 +6712,10 @@ do
 		Name = "Time Of Day", Icon = "sun", Options = { "Dawn", "Day", "Dusk", "Night" }, Default = "Day", Flag = "G_Time",
 		Callback = function(v) choiceInfo:Set(nil, "Time Of Day = " .. tostring(v)) end,
 	})
-
 	local ValueTab = Window:AddTab({
 		Name = "Value", Icon = "percent", Group = "TESTER",
 		Description = "Stepper with press and hold, progress bar and color picker.",
 	})
-
 	local sp = ValueTab:AddSection({ Name = "Stepper", Icon = "plus", Side = "Left" })
 	local stepInfo = sp:AddLabel({ Title = "Last change", Text = "Press and hold + or - to repeat faster." })
 	sp:AddStepper({ Name = "Quantity", Icon = "hash", Min = 0, Max = 20, Step = 1, Default = 5, Flag = "V_Qty", Callback = function(v)
@@ -7029,7 +6727,6 @@ do
 	sp:AddStepper({ Name = "Power", Icon = "bolt", Min = 0, Max = 500, Step = 25, Default = 100, Flag = "V_Power", Callback = function(v)
 		stepInfo:Set(nil, "Power = " .. v)
 	end })
-
 	local pg = ValueTab:AddSection({ Name = "Progress", Icon = "pulse", Side = "Right" })
 	local prog = pg:AddProgress({ Name = "Download", Icon = "down", Default = 0, OnComplete = function()
 		Library:Notify({ Title = "Progress", Content = "Download complete.", Duration = 2.5, Icon = "check" })
@@ -7059,7 +6756,6 @@ do
 	pg:AddButton({ Name = "Random Value", Icon = "shuffle", ButtonText = "Roll", Callback = function()
 		staticBar:Set(math.random(0, 100))
 	end })
-
 	local cp = ValueTab:AddSection({ Name = "Color Picker", Icon = "palette", Side = "Left" })
 	local pvRow = makeRow(cp, 46)
 	local pvBar = new("Frame", {
@@ -7083,12 +6779,10 @@ do
 		refreshPv()
 	end })
 	refreshPv()
-
 	local Console = Window:AddTab({
 		Name = "Console", Icon = "chat", Group = "TESTER",
 		Description = "Live event log and stress tests for every component.",
 	})
-
 	local lg = Console:AddSection({ Name = "Event Log", Icon = "chat", Side = "Left" })
 	local log = lg:AddLog({ Name = "Events", Height = 160, MaxLines = 60 })
 	log:Log("Console ready.", "ok")
@@ -7114,7 +6808,6 @@ do
 		end
 	end })
 	lg:AddButton({ Name = "Clear Log", Icon = "trash", ButtonText = "Clear", Callback = function() log:Clear() end })
-
 	local lastLog = {}
 	Library.OnFlagChanged = function(flag, value)
 		if not Library.Flags.X_LogFlags or flag == "X_LogFlags" then return end
@@ -7123,13 +6816,10 @@ do
 		lastLog[flag] = now
 		log:Log(flag .. " = " .. fmt(value), "info")
 	end
-
 	local stt = Console:AddSection({ Name = "Stress Tests", Icon = "bolt", Side = "Left" })
-
 	local function skip(flag)
 		return flag:find("^UI_") ~= nil or flag:find("^X_") ~= nil
 	end
-
 	stt:AddButton({ Name = "Randomize All Flags", Icon = "shuffle", ButtonText = "Run", Callback = function()
 		local n = 0
 		for flag, ob in pairs(Library.Options) do
@@ -7159,7 +6849,6 @@ do
 		end
 		log:Log("Randomized " .. n .. " flags.", "ok")
 	end })
-
 	local allState = false
 	stt:AddButton({ Name = "Toggle All Switches", Icon = "toggle", ButtonText = "Flip", Callback = function()
 		allState = not allState
@@ -7172,7 +6861,6 @@ do
 		end
 		log:Log("All switches set to " .. tostring(allState) .. " (" .. i .. ").", "info")
 	end })
-
 	local cycling = false
 	stt:AddButton({ Name = "Cycle Themes", Icon = "palette", ButtonText = "Play", Callback = function()
 		if cycling then return end
@@ -7192,11 +6880,10 @@ do
 			cycling = false
 		end)
 	end })
-
 	stt:AddButton({ Name = "Effects Burst", Icon = "bolt", ButtonText = "Fire", Callback = function()
 		local m = Window.Main
 		local c = Vector2.new(m.AbsolutePosition.X + m.AbsoluteSize.X / 2, m.AbsolutePosition.Y + m.AbsoluteSize.Y / 2)
-		local s = m.AbsoluteSize.X / BASE_W
+		local s = getScale()
 		for k = 0, 2 do
 			task.delay(k * 0.18, function()
 				FX.ring(c, Theme.Accent, 30 * s, (140 + k * 60) * s, 0.7, 0.2)
@@ -7204,7 +6891,6 @@ do
 		end
 		FX.burst(c, Theme.Accent, 14, 120 * s, { Size = 12 * s })
 	end })
-
 	stt:AddButton({ Name = "Notification Flood", Icon = "bell", ButtonText = "Send", Callback = function()
 		for i = 1, 6 do
 			task.delay((i - 1) * 0.15, function()
@@ -7212,7 +6898,6 @@ do
 			end)
 		end
 	end })
-
 	stt:AddButton({ Name = "Confirm Dialog", Icon = "shield", ButtonText = "Open", Callback = function()
 		Library:Confirm({
 			Title = "Test Dialog", Content = "Pick an option to see the result in the log.", ConfirmText = "Confirm", CancelText = "Cancel", Icon = "shield",
@@ -7220,7 +6905,6 @@ do
 			OnCancel = function() log:Log("Dialog cancelled.", "warn") end,
 		})
 	end })
-
 	local touring = false
 	stt:AddButton({ Name = "Tour All Tabs", Icon = "compass", Style = "Primary", Callback = function()
 		if touring then return end
@@ -7239,14 +6923,10 @@ do
 		end)
 	end })
 end
-
 Window:CreateSettingsTab({ Group = "ACCOUNT" })
-
 Window:LoadAutoConfig()
 Library:Notify({ Title = "ZystrixUI Tester", Content = "Ready. Press J or the bar at the top to open/close.", Duration = 5, Icon = "crown" })
 end
-
 local okDemo, errDemo = pcall(RunDemo)
 if not okDemo then warn("[ZystrixUI] demo error: " .. tostring(errDemo)) end
-
 return Library
