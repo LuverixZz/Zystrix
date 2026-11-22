@@ -230,10 +230,7 @@ local function applyTheme(name, instant)
 			pcall(tween, o, { [prop] = Theme[key] }, 0.35)
 		end
 	end
-	for i = #Hooks, 1, -1 do
-		local ok, res = pcall(Hooks[i], instant)
-		if ok and res == "dead" then table.remove(Hooks, i) end
-	end
+	for _, h in ipairs(Hooks) do pcall(h, instant) end
 end
 local function ensureFolder(path)
 	if HasFS and not isfolder(path) then pcall(makefolder, path) end
@@ -762,8 +759,8 @@ local function fitLine(lbl, maxSize, minSize, inset, fixedW)
 	return refit
 end
 local Kit = {
-	Radius = { Tooltip = 8, Popup = 10, Toast = 10, Dialog = 12 },
-	Thick = { Tooltip = 2, Popup = 3, Toast = 4, Dialog = 6, Window = 6 },
+	Radius = { Tooltip = 8, Popup = 10, Toast = 12, Dialog = 16 },
+	Thick = { Tooltip = 3, Popup = 4, Toast = 5, Dialog = 8, Window = 6 },
 	Z = { Popup = 50, Toast = 90, Dialog = 100, Tooltip = 150 },
 	White = Color3.new(1, 1, 1),
 	Black = Color3.new(0, 0, 0),
@@ -821,14 +818,6 @@ function Kit.click(btn, fn, eager)
 		end
 	end)
 end
-function Kit.hook(inst, fn)
-	Hooks[#Hooks + 1] = function(instant)
-		if not inst.Parent then return "dead" end
-		fn(instant and 0 or 0.35)
-	end
-end
--- floating surface = same recipe as Window/Section: Card + gradient + stroke + bevel,
--- accent-tinted slab underneath (identical to the window slab). Tone never repaints the surface.
 function Kit.surface(parent, o)
 	o = o or {}
 	local r = o.Radius or Kit.Radius.Popup
@@ -845,10 +834,9 @@ function Kit.surface(parent, o)
 	end
 	s.Base = new("Frame", {
 		Name = "Base", Position = UDim2.fromOffset(0, T), Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Theme.Accent:Lerp(Kit.Black, 0.62), ZIndex = 1, Parent = root,
+		BackgroundColor3 = (tone or Theme.Accent):Lerp(Kit.Black, 0.62), ZIndex = 1, Parent = root,
 	})
 	corner(s.Base, r)
-	Kit.hook(s.Base, function(t) tween(s.Base, { BackgroundColor3 = Theme.Accent:Lerp(Kit.Black, 0.62) }, t) end)
 	s.Box = new("Frame", { Name = "Box", Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = root })
 	s.Face = new(o.Canvas and "CanvasGroup" or "Frame", {
 		Name = "Face", Size = UDim2.fromScale(1, 1), Bg = "Card", ClipsDescendants = o.Clip == true, Parent = s.Box,
@@ -856,12 +844,17 @@ function Kit.surface(parent, o)
 	if o.Sink then s.Face.Active = true end
 	corner(s.Face, r)
 	gradient(s.Face, 225)
-	s.GlowFrame = new("Frame", {
-		Name = "Glow", Size = UDim2.fromScale(1, 1), Bg = "Accent", BackgroundTransparency = o.Glow or 0.92, ZIndex = 1, Parent = s.Face,
-	})
+	local glowProps = {
+		Name = "Glow", Size = UDim2.fromScale(1, 1), BackgroundTransparency = o.Glow or 0.82, ZIndex = 1, Parent = s.Face,
+	}
+	if tone then glowProps.BackgroundColor3 = tone else glowProps.Bg = "Accent" end
+	s.GlowFrame = new("Frame", glowProps)
 	corner(s.GlowFrame, r)
 	new("UIGradient", { Transparency = NumberSequence.new(0, 1), Rotation = 20, Parent = s.GlowFrame })
-	Kit.bevel(s.Face, r)
+	new("Frame", {
+		Name = "Highlight", Position = UDim2.fromOffset(r, 1), Size = UDim2.new(1, -r * 2, 0, 1),
+		BackgroundColor3 = Kit.White, BackgroundTransparency = 0.9, Parent = s.Face,
+	})
 	if o.Canvas then
 		s.Outline = new("Frame", { Name = "Outline", Size = UDim2.fromScale(1, 1), ZIndex = 4, Active = false, Parent = s.Box })
 		corner(s.Outline, r)
@@ -871,11 +864,9 @@ function Kit.surface(parent, o)
 	end
 	return s
 end
--- icon keycap: same build as the header control buttons / icon tiles (edge + Element face + stroke + gradient).
--- The tone only colors the icon and a faint tint of the face.
 function Kit.badge(parent, icon, color, size, props)
 	size = size or 32
-	local edge = math.max(2, math.floor(size * 0.08))
+	local edge = math.max(3, math.floor(size * 0.09))
 	local br = math.max(7, math.floor(size * 0.3))
 	local holder = new("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(size, size + edge), Parent = parent,
@@ -885,23 +876,17 @@ function Kit.badge(parent, icon, color, size, props)
 	end
 	local e = new("Frame", {
 		Name = "Edge", Position = UDim2.fromOffset(0, edge), Size = UDim2.fromOffset(size, size),
-		BackgroundColor3 = Theme.Element:Lerp(Kit.Black, 0.5), Parent = holder,
+		BackgroundColor3 = color:Lerp(Kit.Black, 0.5), Parent = holder,
 	})
 	corner(e, br)
-	Kit.hook(e, function(t) tween(e, { BackgroundColor3 = Theme.Element:Lerp(Kit.Black, 0.5) }, t) end)
-	local f = new("Frame", { Name = "Coin", Size = UDim2.fromOffset(size, size), BackgroundColor3 = Theme.Element:Lerp(color, 0.16), ZIndex = 2, Parent = holder })
+	local f = new("Frame", { Name = "Coin", Size = UDim2.fromOffset(size, size), BackgroundColor3 = color, ZIndex = 2, Parent = holder })
 	corner(f, br)
-	stroke(f)
-	gradient(f, 175)
-	local ic = makeIcon(f, icon, math.floor(size * 0.52), nil, {
+	if size >= 40 then stroke(f, "Card", 2) end
+	local ic = makeIcon(f, icon, math.floor(size * 0.5), nil, {
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = 3,
 	})
-	tintIcon(ic, color, 0.01)
+	tintIcon(ic, Kit.onColor(color), 0.01)
 	return holder, f, ic
-end
-function Kit.retintBadge(face, icon, color)
-	face.BackgroundColor3 = Theme.Element:Lerp(color, 0.16)
-	tintIcon(icon, color, 0.01)
 end
 function Kit.tag(parent, text, color, props)
 	local p = {
@@ -915,7 +900,15 @@ function Kit.tag(parent, text, color, props)
 	return new("TextLabel", p)
 end
 function Kit.perf(parent, x, y, w)
-	return new("Frame", { Name = "Divider", Position = UDim2.fromOffset(x, y + 6), Size = UDim2.fromOffset(w, 1), Bg = "Stroke", Parent = parent })
+	local line = new("Frame", { Name = "Divider", Position = UDim2.fromOffset(x, y + 5), Size = UDim2.fromOffset(w, 2), Bg = "Stroke", Parent = parent })
+	round(line)
+	local glow = new("Frame", { Size = UDim2.fromScale(1, 1), Bg = "Accent", Parent = line })
+	round(glow)
+	new("UIGradient", {
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.25), NumberSequenceKeypoint.new(1, 1) }),
+		Parent = glow,
+	})
+	return line
 end
 function Kit.bevel(p, inset, noLow)
 	inset = inset or 8
@@ -925,7 +918,7 @@ function Kit.bevel(p, inset, noLow)
 	end
 end
 function Kit.key(parent, o)
-	local W, H, r, T = o.W or 96, o.H or 38, o.Radius or 8, o.Thick or 3
+	local W, H, r, T = o.W or 96, o.H or 38, o.Radius or 11, o.Thick or 4
 	local neutral = o.Variant == "neutral"
 	local tone = o.Color
 	local holder = new("Frame", {
@@ -934,11 +927,11 @@ function Kit.key(parent, o)
 	})
 	local key = { Holder = holder, Enabled = true }
 	local function rest()
-		if neutral then return Theme.Hover end
+		if neutral then return Theme.Element end
 		return tone or Theme.Accent
 	end
 	local function over()
-		if neutral then return Theme.Stroke end
+		if neutral then return Theme.Hover end
 		return rest():Lerp(Kit.White, 0.14)
 	end
 	local base = new("Frame", {
@@ -946,13 +939,11 @@ function Kit.key(parent, o)
 		BackgroundColor3 = rest():Lerp(Kit.Black, 0.5), Parent = holder,
 	})
 	corner(base, r)
-	Kit.hook(base, function(t) tween(base, { BackgroundColor3 = rest():Lerp(Kit.Black, 0.5) }, t) end)
 	local fp = { Name = "Face", Size = UDim2.fromOffset(W, H), ZIndex = 2, Parent = holder }
-	if neutral then fp.Bg = "Hover" elseif tone then fp.BackgroundColor3 = tone else fp.Bg = "Accent" end
+	if neutral then fp.Bg = "Element" elseif tone then fp.BackgroundColor3 = tone else fp.Bg = "Accent" end
 	local face = new("TextButton", fp)
 	corner(face, r)
 	if neutral then stroke(face) end
-	gradient(face, neutral and 185 or 200)
 	key.Face = face
 	local hint = o.Hint
 	local avail = W - 16 - (hint and 44 or 0)
@@ -967,7 +958,7 @@ function Kit.key(parent, o)
 	local label = new("TextLabel", lp)
 	key.Label = label
 	if hint then
-		local hintCol = neutral and Theme.SubText or (tone and Kit.onColor(tone) or Theme.AccentText)
+		local hintCol = neutral and Theme.Text or (tone and Kit.onColor(tone) or Theme.AccentText)
 		local pill = new("TextLabel", {
 			Name = "Hint", Text = hint, Font = FONT_BOLD, TextSize = 9, TextColor3 = hintCol, TextTransparency = 0.2,
 			BackgroundColor3 = Kit.Black, BackgroundTransparency = 0.8, AnchorPoint = Vector2.new(1, 0.5),
@@ -989,13 +980,13 @@ function Kit.key(parent, o)
 	end)
 	face.MouseLeave:Connect(function()
 		hov = false
-		lift(0, 0.2)
+		lift(0, 0.16)
 		tween(face, { BackgroundColor3 = rest() }, 0.2)
 	end)
 	face.MouseButton1Down:Connect(function()
-		if key.Enabled then lift(2, 0.05, Enum.EasingStyle.Quad) end
+		if key.Enabled then lift(T - 1, 0.05, Enum.EasingStyle.Quad) end
 	end)
-	face.MouseButton1Up:Connect(function() lift(hov and -1 or 0, 0.25, Enum.EasingStyle.Back) end)
+	face.MouseButton1Up:Connect(function() lift(hov and -1 or 0, 0.24, Enum.EasingStyle.Back) end)
 	function key:SetEnabled(v)
 		self.Enabled = v and true or false
 		tween(face, { BackgroundTransparency = self.Enabled and 0 or 0.6 }, 0.15)
@@ -1005,7 +996,7 @@ function Kit.key(parent, o)
 	function key:OnClick(fn)
 		Kit.click(face, function(pos)
 			if not self.Enabled then return end
-			FX.ripple(face, pos, neutral and Theme.Accent or Kit.White, { Radius = r, Alpha = 0.7, Time = 0.5 })
+			FX.ripple(face, pos, neutral and Theme.Accent or Kit.White, { Radius = r, Alpha = 0.65, Time = 0.4 })
 			fn(pos)
 		end, true)
 	end
@@ -1579,8 +1570,12 @@ do
 			local c, ic, lbl, tn = Kit.tone(typeName)
 			local newTone = tn and c or nil
 			local col = newTone or Theme.Accent
-			Kit.retintBadge(bFace, bIcon, col)
+			bFace.BackgroundColor3 = col
+			badge.Edge.BackgroundColor3 = col:Lerp(BLACK, 0.5)
+			tintIcon(bIcon, Kit.onColor(col), 0.01)
 			timeBar.BackgroundColor3 = col
+			surf.GlowFrame.BackgroundColor3 = col
+			baseF.BackgroundColor3 = col:Lerp(BLACK, 0.62)
 			if fill then fill.BackgroundColor3 = col end
 			tagLbl.TextColor3 = newTone and newTone:Lerp(Theme.Text, 0.3) or Theme.SubText
 			metaLbl.TextColor3 = newTone and newTone:Lerp(Theme.Text, 0.3) or Theme.Accent
@@ -4936,7 +4931,7 @@ function Library:Confirm(o)
 	local accent = color
 	local icon = o.Icon or tIcon
 	local PERIOD = 22
-	local topH = 0
+	local topH = danger and 12 or 0
 	local showHints = UserInputService.KeyboardEnabled and not IS_TOUCH
 	local single = o.CancelText == false
 	local hasInput = type(o.Input) == "table"
@@ -4993,6 +4988,22 @@ function Library:Confirm(o)
 	card.GroupTransparency = 1
 	outStroke.Transparency = 1
 	local beltTw
+	if danger then
+		local clip = new("Frame", {
+			Size = UDim2.new(1, 0, 0, topH), BackgroundColor3 = color:Lerp(BLACK, 0.82), ClipsDescendants = true, Parent = card,
+		})
+		local belt = new("Frame", { Size = UDim2.new(0, W + PERIOD * 3, 1, 0), Parent = clip })
+		for i = 0, math.ceil((W + PERIOD * 2) / PERIOD) do
+			new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(i * PERIOD, topH / 2),
+				Size = UDim2.fromOffset(9, topH * 3), Rotation = 38, BackgroundColor3 = color, Parent = belt,
+			})
+		end
+		beltTw = TweenService:Create(belt, TweenInfo.new(1.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, false), {
+			Position = UDim2.fromOffset(-PERIOD, 0),
+		})
+		beltTw:Play()
+	end
 	Kit.tag(card, o.Tag or (isTone and tLabel) or (single and "Notice" or "Confirm"), tone, {
 		TextSize = 11, Position = UDim2.fromOffset(20, tagY), Size = UDim2.fromOffset(W - 40 - 64, 12),
 	})
@@ -5013,9 +5024,9 @@ function Library:Confirm(o)
 	if hasInput then
 		local io = o.Input
 		inputWrap = new("Frame", {
-			Name = "Input", Position = UDim2.fromOffset(20, inputY), Size = UDim2.fromOffset(W - 40, 34), Bg = "Hover", Parent = card,
+			Name = "Input", Position = UDim2.fromOffset(20, inputY), Size = UDim2.fromOffset(W - 40, 34), Bg = "Element", Parent = card,
 		})
-		corner(inputWrap, 8)
+		corner(inputWrap, 9)
 		inputStroke = stroke(inputWrap)
 		gradient(inputWrap, 205)
 		inputBox = new("TextBox", {
@@ -5074,13 +5085,13 @@ function Library:Confirm(o)
 	local cancel
 	if not single then
 		cancel = Kit.key(btnRow, {
-			Text = o.CancelText or "Cancel", W = bw, H = 38, Radius = 9, Thick = 3, Variant = "neutral",
+			Text = o.CancelText or "Cancel", W = bw, H = 38, Radius = 11, Thick = 4, Variant = "neutral",
 			Hint = showHints and "Esc" or nil, Position = UDim2.fromOffset(20, 0),
 		})
 	end
 	local baseText = o.ConfirmText or (single and "OK" or "Yes")
 	local okb = Kit.key(btnRow, {
-		Text = baseText, W = bw, H = 38, Radius = 9, Thick = 3, Variant = "primary",
+		Text = baseText, W = bw, H = 38, Radius = 11, Thick = 4, Variant = "primary",
 		Color = tone, Hint = (showHints and not danger) and "Enter" or nil, Position = UDim2.fromOffset(single and 20 or (20 + bw + gap), 0),
 	})
 	local lockUntil = countdown and (os.clock() + countdown) or nil
