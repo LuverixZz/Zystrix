@@ -5262,7 +5262,7 @@ function Library:CreateWindow(opts)
 			Size = UDim2.fromOffset(PW, PHT), Parent = holder,
 		})
 		local shScale = new("UIScale", { Parent = shAnchor })
-		local sh = makeShadow(shAnchor, 12, { Steps = 4, Step = 4, Alpha = 0.08, Offset = 7 })
+		local sh = makeShadow(shAnchor, 12, { Steps = 3, Step = 2, Alpha = 0.05, Offset = 5 })
 		local stage = new("CanvasGroup", { Size = UDim2.fromScale(1, 1), Parent = holder })
 		local stScale = new("UIScale", { Parent = stage })
 		local root = new("Frame", {
@@ -5321,7 +5321,7 @@ function Library:CreateWindow(opts)
 		end
 
 		local hov, tx, ty, cx, cy, ph, pp = false, 0, 0, 0, 0, 0, 0
-		local pressT = 0
+		local pressT, dragged, pressAbs = 0, false, Vector2.new()
 		local function aim(pos)
 			local ap, as = root.AbsolutePosition, root.AbsoluteSize
 			if as.X <= 0 or as.Y <= 0 then return end
@@ -5332,6 +5332,10 @@ function Library:CreateWindow(opts)
 
 		connect(RunService.Heartbeat, function(dt)
 			if not holder.Visible then return end
+			if pressT == 1 and not dragged and (holder.AbsolutePosition - pressAbs).Magnitude > 3 then
+				dragged = true
+				pressT = 0
+			end
 			local a = 1 - math.exp(-dt * 14)
 			cx += (tx - cx) * a
 			cy += (ty - cy) * a
@@ -5414,14 +5418,19 @@ function Library:CreateWindow(opts)
 				hov = true
 			end
 		end)
-		connect(hit.MouseButton1Down, function() pressT = 1 end)
+		connect(hit.MouseButton1Down, function()
+			dragged = false
+			pressAbs = holder.AbsolutePosition
+			pressT = 1
+		end)
 		connect(hit.MouseButton1Up, function()
 			pressT = 0
+			dragged = false
 			if IS_TOUCH then
 				hov, tx, ty = false, 0, 0
 			end
 		end)
-		connect(hit.MouseLeave, function() pressT = 0 end)
+		connect(hit.MouseLeave, function() if not dragged then pressT = 0 end end)
 		draggable(hit, holder, function()
 			pressT = 0
 			FX.ripple(face, nil, Theme.Accent, { Radius = 12, Alpha = 0.78, Time = 0.55 })
