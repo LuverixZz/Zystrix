@@ -5246,31 +5246,62 @@ function Library:CreateWindow(opts)
 	self.SearchInfo = new("TextLabel", { Text = "", TextSize = 12, Fg = "SubText", Size = UDim2.new(1, 0, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 2, Parent = sHead })
 
 	if opts.ToggleButton ~= false then
-		local PH, THK = 36, 4
+		local PH, THK, PAD = 36, 6, 9
 		local BLACK, WHITE = Color3.new(0, 0, 0), Color3.new(1, 1, 1)
 		local ttl = tostring(opts.Title or "ZystrixUI")
 		local PW = math.clamp(math.ceil(textWidth(ttl, 12, FONT_BOLD)) + 120, 176, 270)
+		local PHT = PH + THK
+		local HH = PHT + PAD * 2
 		local holder = new("Frame", {
-			Name = "ToggleButton", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 12 + (PH + THK) / 2),
-			Size = UDim2.fromOffset(PW, PH + THK), Parent = Gui,
+			Name = "ToggleButton", AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0.5, 0, 0, 10 + HH / 2),
+			Size = UDim2.fromOffset(PW + PAD * 2, HH), Visible = not self.Visible, Parent = Gui,
 		})
-		makeShadow(holder, 12, { Steps = 3, Step = 4, Alpha = 0.07, Offset = 6 })
+		local shAnchor = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(PW, PHT), Parent = holder,
+		})
+		local shScale = new("UIScale", { Parent = shAnchor })
+		local sh = makeShadow(shAnchor, 12, { Steps = 4, Step = 4, Alpha = 0.08, Offset = 7 })
+		local stage = new("CanvasGroup", { Size = UDim2.fromScale(1, 1), Parent = holder })
+		local stScale = new("UIScale", { Parent = stage })
+		local root = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(PW, PHT), Parent = stage,
+		})
 
-		local base = new("Frame", {
-			Position = UDim2.fromOffset(0, THK), Size = UDim2.new(1, 0, 0, PH),
-			BackgroundColor3 = Theme.Accent:Lerp(BLACK, 0.58), ZIndex = 1, Parent = holder,
-		})
-		corner(base, 12)
-		local face = new("Frame", { Size = UDim2.new(1, 0, 0, PH), Bg = "Card", ZIndex = 2, Parent = holder })
+		local function shade(a) return Theme.Accent:Lerp(BLACK, a) end
+		local ext = {}
+		for i = 1, 3 do
+			local f = new("Frame", {
+				Position = UDim2.fromOffset(0, i * THK / 3), Size = UDim2.new(1, 0, 0, PH),
+				BackgroundColor3 = shade(0.34 + i * 0.1), ZIndex = 4 - i, Parent = root,
+			})
+			corner(f, 12)
+			ext[i] = f
+		end
+
+		local face = new("Frame", { Size = UDim2.new(1, 0, 0, PH), Bg = "Card", ZIndex = 5, Parent = root })
 		corner(face, 12)
 		stroke(face)
-		gradient(face, 215)
+		local faceGrad = gradient(face, 215)
 		local glowF = new("Frame", { Size = UDim2.fromScale(1, 1), Bg = "Accent", BackgroundTransparency = 0.84, Parent = face })
 		corner(glowF, 12)
 		new("UIGradient", { Transparency = NumberSequence.new(1, 0), Parent = glowF })
 		new("Frame", {
 			Position = UDim2.fromOffset(10, 1), Size = UDim2.new(1, -20, 0, 1),
-			BackgroundColor3 = WHITE, BackgroundTransparency = 0.9, Parent = face,
+			BackgroundColor3 = WHITE, BackgroundTransparency = 0.88, Parent = face,
+		})
+		local shine = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 0, ZIndex = 2, Parent = face })
+		corner(shine, 12)
+		local shineGrad = new("UIGradient", {
+			Rotation = 20, Offset = Vector2.new(-1, 0),
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.38, 1),
+				NumberSequenceKeypoint.new(0.5, 0.86), NumberSequenceKeypoint.new(0.62, 1),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+			Parent = shine,
 		})
 
 		local tile, crown = iconTile(face, "crown", 26, 15, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 7, 0.5, 0) })
@@ -5288,53 +5319,132 @@ function Library:CreateWindow(opts)
 		})
 		round(led)
 		TweenService:Create(led, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { BackgroundTransparency = 0.65 }):Play()
-		local chev = makeIcon(face, "chevron", 12, "SubText", {
-			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Rotation = 180,
+		local chev = makeIcon(face, "chevron", 12, "Accent", {
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Rotation = 0,
 		})
 
-		local function keyHint()
-			return (not IS_TOUCH) and ("  /  " .. self.ToggleKey.Name) or ""
-		end
-		local function sync(open, instant)
-			subLbl.Text = (open and "HIDE MENU" or "OPEN MENU") .. keyHint()
-			tween(chev, { Rotation = open and 180 or 0 }, instant and 0 or 0.35, Enum.EasingStyle.Back)
-			tween(led, { BackgroundColor3 = open and Theme.Accent or Theme.SubText }, instant and 0 or 0.25)
-			if not instant then
-				subLbl.Position = UDim2.fromOffset(42, 27)
-				subLbl.TextTransparency = 0.7
-				tween(subLbl, { Position = UDim2.fromOffset(42, 21), TextTransparency = 0 }, 0.3, Enum.EasingStyle.Back)
-				if not open then
-					face.Position = UDim2.fromOffset(0, -7)
-					tween(face, { Position = UDim2.new() }, 0.45, Enum.EasingStyle.Bounce)
-				end
+		subLbl.Text = "OPEN MENU" .. ((not IS_TOUCH) and ("  /  " .. self.ToggleKey.Name) or "")
+
+		Hooks[#Hooks + 1] = function(instant)
+			for i, f in ipairs(ext) do
+				tween(f, { BackgroundColor3 = shade(0.34 + i * 0.1) }, instant and 0 or 0.35)
 			end
+		end
+
+		local hov, tx, ty, cx, cy, ph, pp = false, 0, 0, 0, 0, 0, 0
+		local pressT = 0
+		local function aim(pos)
+			local ap, as = root.AbsolutePosition, root.AbsoluteSize
+			if as.X <= 0 or as.Y <= 0 then return end
+			local p = toScreen(pos)
+			tx = math.clamp((p.X - (ap.X + as.X / 2)) / (as.X / 2), -1, 1)
+			ty = math.clamp((p.Y - (ap.Y + as.Y / 2)) / (as.Y / 2), -1, 1)
+		end
+
+		connect(RunService.Heartbeat, function(dt)
+			if not holder.Visible then return end
+			local a = 1 - math.exp(-dt * 14)
+			cx += (tx - cx) * a
+			cy += (ty - cy) * a
+			ph += ((hov and 1 or 0) - ph) * a
+			pp += (pressT - pp) * (1 - math.exp(-dt * 26))
+			local t = os.clock()
+			root.Position = UDim2.new(0.5, 0, 0.5, math.sin(t * 2.1) * 1.6 * (1 - pp))
+			local fy = -2.5 * ph + (THK - 1) * pp + cy * 1.2 * ph
+			face.Position = UDim2.fromOffset(cx * 4.5 * ph, fy)
+			for i, f in ipairs(ext) do
+				local k = 1 - i / 3
+				f.Position = UDim2.fromOffset(cx * 4.5 * ph * k, (i * THK / 3) * (1 + 0.4 * ph) * (1 - 0.75 * pp))
+			end
+			faceGrad.Rotation = 215 + cx * 28
+			local ph2 = (t % 4.2) / 4.2
+			shineGrad.Offset = Vector2.new(-1 + math.min(ph2 / 0.4, 1) * 2, 0)
+			chev.Position = UDim2.new(1, -12 + math.sin(t * 3.2) * 1.5, 0.5, 0)
+		end)
+
+		local appearTok = 0
+		local function sync(open, instant)
+			appearTok += 1
+			local my = appearTok
+			if open then
+				if instant then
+					holder.Visible = false
+					return
+				end
+				tween(stage, { GroupTransparency = 1 }, 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+				tween(stScale, { Scale = 0.55 }, 0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+				tween(shScale, { Scale = 0.55 }, 0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+				tween(stage, { Position = UDim2.fromOffset(0, -18) }, 0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+				sh:Fade(false, 0.18)
+				task.delay(0.25, function()
+					if appearTok == my then
+						holder.Visible = false
+						stage.Position = UDim2.new()
+					end
+				end)
+				return
+			end
+			holder.Visible = true
+			hov, tx, ty, pressT = false, 0, 0, 0
+			if instant then
+				stage.GroupTransparency, stScale.Scale, shScale.Scale = 0, 1, 1
+				stage.Position = UDim2.new()
+				sh:Set(true)
+				return
+			end
+			stage.GroupTransparency = 1
+			stScale.Scale, shScale.Scale = 0.45, 0.45
+			stage.Position = UDim2.fromOffset(0, -46)
+			sh:Set(false)
+			tween(stage, { GroupTransparency = 0 }, 0.28, Enum.EasingStyle.Quad)
+			tween(stage, { Position = UDim2.new() }, 0.7, Enum.EasingStyle.Bounce)
+			tween(stScale, { Scale = 1 }, 0.6, Enum.EasingStyle.Back)
+			tween(shScale, { Scale = 1 }, 0.6, Enum.EasingStyle.Back)
+			sh:Fade(true, 0.5)
+			crown.Rotation = -180
+			tween(crown, { Rotation = 0 }, 0.7, Enum.EasingStyle.Back)
+			task.delay(0.32, function()
+				if appearTok == my and face.Parent then
+					FX.ripple(face, nil, Theme.Accent, { Radius = 12, Alpha = 0.8, Time = 0.6 })
+				end
+			end)
 		end
 		sync(self.Visible, true)
 		self._pillSync = function(open) sync(open) end
 
-		Hooks[#Hooks + 1] = function(instant)
-			tween(base, { BackgroundColor3 = Theme.Accent:Lerp(BLACK, 0.58) }, instant and 0 or 0.35)
-			tween(led, { BackgroundColor3 = self.Visible and Theme.Accent or Theme.SubText }, instant and 0 or 0.35)
-		end
-
-		local hit = hitZone(holder, { ZIndex = 6 })
-		local hov = false
-		local function lift(y, t, style)
-			tween(face, { Position = UDim2.fromOffset(0, y) }, t, style or Enum.EasingStyle.Quint)
-		end
+		local hit = hitZone(holder, {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(PW, PHT), ZIndex = 6,
+		})
 		onHover(hit,
-			function() hov = true lift(-2, 0.14) end,
-			function() hov = false lift(0, 0.18) end)
-		connect(hit.MouseButton1Down, function() lift(THK - 1, 0.05, Enum.EasingStyle.Quad) end)
-		connect(hit.MouseButton1Up, function() lift(hov and -2 or 0, 0.28, Enum.EasingStyle.Back) end)
+			function() hov = true end,
+			function() hov = false tx, ty = 0, 0 end)
+		connect(UserInputService.InputChanged, function(i)
+			if hov and i.UserInputType == Enum.UserInputType.MouseMovement then aim(i.Position) end
+		end)
+		connect(hit.InputBegan, function(i)
+			if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
+				aim(i.Position)
+				hov = true
+			end
+		end)
+		connect(hit.MouseButton1Down, function() pressT = 1 end)
+		connect(hit.MouseButton1Up, function()
+			pressT = 0
+			if IS_TOUCH then
+				hov, tx, ty = false, 0, 0
+			end
+		end)
+		connect(hit.MouseLeave, function() pressT = 0 end)
 		draggable(hit, holder, function()
-			self:Toggle()
+			pressT = 0
 			FX.ripple(face, nil, Theme.Accent, { Radius = 12, Alpha = 0.78, Time = 0.55 })
-			crown.Rotation = 0
 			tween(crown, { Rotation = 360 }, 0.5, Enum.EasingStyle.Quint)
 			task.delay(0.55, function()
 				if crown.Parent then crown.Rotation = 0 end
 			end)
+			if self.Minimized then self:SetMinimized(false) end
+			self:Toggle(true)
 		end)
 	end
 
