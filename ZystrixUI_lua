@@ -3595,32 +3595,7 @@ end
 
 function Window:SetMinimized(state)
 	state = state and true or false
-	if state == self.Minimized then return end
-
-	closePopup()
-	if SliderLock.Active then pcall(SliderLock.Active) end
-	self.Minimized = state
-	self:_setLoops(self.Visible and not state)
-	self._minTok = (self._minTok or 0) + 1
-	local tok = self._minTok
-
-	local delta = (BASE_H - (HEADER_H + 1)) * ScaleObj.Scale / 2
-	local p = (self._minBusy and self._posGoal) or self.Main.Position
-	local goal = UDim2.new(p.X.Scale, p.X.Offset, p.Y.Scale, state and (p.Y.Offset - delta) or (p.Y.Offset + delta))
-	self._posGoal, self._minBusy = goal, true
-	task.delay(0.5, function()
-		if self._minTok == tok then self._minBusy = false end
-	end)
-	if not state then self.Body.Visible = true end
-	tween(self.Main, {
-		Size = UDim2.fromOffset(BASE_W, state and (HEADER_H + 1) or BASE_H),
-		Position = goal,
-	}, 0.38, state and Enum.EasingStyle.Quint or Enum.EasingStyle.Back)
-	if state then
-		task.delay(0.36, function()
-			if self._minTok == tok and self.Minimized then self.Body.Visible = false end
-		end)
-	end
+	self:Toggle(not state)
 end
 
 function Window:SetMaximized(state)
@@ -3656,6 +3631,7 @@ function Window:Toggle(state)
 	self.FxShow = state
 	self:_setLoops(state and not self.Minimized)
 	if self.OnToggle then pcall(self.OnToggle, state) end
+	if self._pillSync then pcall(self._pillSync, state) end
 	closePopup()
 	if SliderLock.Active then pcall(SliderLock.Active) end
 	self._tgTok = (self._tgTok or 0) + 1
@@ -4839,7 +4815,7 @@ function Window:RequestClose()
 	Library:Confirm({
 		Title = "Close UI?",
 		Content = "The UI will be closed completely, not just hidden. Settings that were not saved to a config will be lost, and you will need to run the script again to reopen it.\n\nWant to hide it instead? Press Cancel, then press "
-			.. self.ToggleKey.Name .. " or the round button.",
+			.. self.ToggleKey.Name .. " or the bar at the top.",
 		ConfirmText = "Close UI",
 		CancelText = "Cancel",
 		Icon = "close",
@@ -5121,7 +5097,12 @@ function Library:CreateWindow(opts)
 		end, true)
 		return slot
 	end
-	ctrl(1, nil, nil, function() self:SetMinimized(not self.Minimized) end)
+	ctrl(1, nil, nil, function()
+		self:Toggle(false)
+		if not self._pillSync then
+			Library:Notify({ Title = "UI hidden", Content = "Press " .. self.ToggleKey.Name .. " to open it again.", Icon = "info" })
+		end
+	end)
 	ctrl(2, "maximize", nil, function() self:SetMaximized(not self.Maximized) end)
 	ctrl(3, "close", Color3.fromRGB(220, 50, 60), function() self:RequestClose() end)
 	draggable(Header, Main, nil, {
@@ -5265,71 +5246,94 @@ function Library:CreateWindow(opts)
 	self.SearchInfo = new("TextLabel", { Text = "", TextSize = 12, Fg = "SubText", Size = UDim2.new(1, 0, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 2, Parent = sHead })
 
 	if opts.ToggleButton ~= false then
+		local PH, THK = 36, 4
+		local BLACK, WHITE = Color3.new(0, 0, 0), Color3.new(1, 1, 1)
+		local ttl = tostring(opts.Title or "ZystrixUI")
+		local PW = math.clamp(math.ceil(textWidth(ttl, 12, FONT_BOLD)) + 120, 176, 270)
 		local holder = new("Frame", {
-			Name = "ToggleButton", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -36, 0, 60),
-			Size = UDim2.fromOffset(TOG_SIZE, TOG_SIZE), Parent = Gui,
+			Name = "ToggleButton", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 12 + (PH + THK) / 2),
+			Size = UDim2.fromOffset(PW, PH + THK), Parent = Gui,
 		})
-		local ripple = new("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1),
-			Bg = "Accent", BackgroundTransparency = 1, ZIndex = 1, Parent = holder,
+		makeShadow(holder, 12, { Steps = 3, Step = 4, Alpha = 0.07, Offset = 6 })
+
+		local base = new("Frame", {
+			Position = UDim2.fromOffset(0, THK), Size = UDim2.new(1, 0, 0, PH),
+			BackgroundColor3 = Theme.Accent:Lerp(BLACK, 0.58), ZIndex = 1, Parent = holder,
 		})
-		round(ripple)
-		local function pulse()
-			ripple.Size = UDim2.fromScale(1, 1)
-			ripple.BackgroundTransparency = 0.55
-			tween(ripple, { Size = UDim2.fromScale(1.7, 1.7), BackgroundTransparency = 1 }, 0.5, Enum.EasingStyle.Quad)
+		corner(base, 12)
+		local face = new("Frame", { Size = UDim2.new(1, 0, 0, PH), Bg = "Card", ZIndex = 2, Parent = holder })
+		corner(face, 12)
+		stroke(face)
+		gradient(face, 215)
+		local glowF = new("Frame", { Size = UDim2.fromScale(1, 1), Bg = "Accent", BackgroundTransparency = 0.84, Parent = face })
+		corner(glowF, 12)
+		new("UIGradient", { Transparency = NumberSequence.new(1, 0), Parent = glowF })
+		new("Frame", {
+			Position = UDim2.fromOffset(10, 1), Size = UDim2.new(1, -20, 0, 1),
+			BackgroundColor3 = WHITE, BackgroundTransparency = 0.9, Parent = face,
+		})
+
+		local tile, crown = iconTile(face, "crown", 26, 15, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 7, 0.5, 0) })
+		new("TextLabel", {
+			Text = ttl, Font = FONT_BOLD, TextSize = 12, Fg = "Text", Position = UDim2.fromOffset(42, 5),
+			Size = UDim2.new(1, -94, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, Parent = face,
+		})
+		local subLbl = new("TextLabel", {
+			Text = "", Font = Enum.Font.Code, TextSize = 9, Fg = "SubText", Position = UDim2.fromOffset(42, 21),
+			Size = UDim2.new(1, -94, 0, 11), TextTruncate = Enum.TextTruncate.AtEnd, Parent = face,
+		})
+		local led = new("Frame", {
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -34, 0.5, 0), Size = UDim2.fromOffset(6, 6),
+			BackgroundColor3 = Theme.Accent, Parent = face,
+		})
+		round(led)
+		TweenService:Create(led, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { BackgroundTransparency = 0.65 }):Play()
+		local chev = makeIcon(face, "chevron", 12, "SubText", {
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Rotation = 180,
+		})
+
+		local function keyHint()
+			return (not IS_TOUCH) and ("  /  " .. self.ToggleKey.Name) or ""
 		end
-
-		local fb = new("Frame", { Name = "Body", Size = UDim2.fromScale(1, 1), Bg = "Sidebar", ZIndex = 2, Parent = holder })
-		round(fb)
-		gradient(fb, 150)
-		local fst = stroke(fb, "Accent", 1.5)
-		local ringGrad = new("UIGradient", {
-			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.9), NumberSequenceKeypoint.new(1, 0) }),
-			Parent = fst,
-		})
-		TweenService:Create(ringGrad, TweenInfo.new(3.5, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1, false), { Rotation = 360 }):Play()
-
-		local inner = new("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -10, 1, -10),
-			Bg = "Element", Parent = fb,
-		})
-		round(inner)
-		stroke(inner)
-		gradient(inner, 170)
-		local toggleCrown = makeIcon(inner, "crown", 18, "Accent", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0) })
-		local function syncCrown()
-			if headerCrown.Image ~= "" then
-				toggleCrown.Image = headerCrown.Image
-				toggleCrown.ImageTransparency = 0
-				local g = toggleCrown:FindFirstChild("Glyph")
-				if g then g.Visible = false end
+		local function sync(open, instant)
+			subLbl.Text = (open and "HIDE MENU" or "OPEN MENU") .. keyHint()
+			tween(chev, { Rotation = open and 180 or 0 }, instant and 0 or 0.35, Enum.EasingStyle.Back)
+			tween(led, { BackgroundColor3 = open and Theme.Accent or Theme.SubText }, instant and 0 or 0.25)
+			if not instant then
+				subLbl.Position = UDim2.fromOffset(42, 27)
+				subLbl.TextTransparency = 0.7
+				tween(subLbl, { Position = UDim2.fromOffset(42, 21), TextTransparency = 0 }, 0.3, Enum.EasingStyle.Back)
+				if not open then
+					face.Position = UDim2.fromOffset(0, -7)
+					tween(face, { Position = UDim2.new() }, 0.45, Enum.EasingStyle.Bounce)
+				end
 			end
 		end
-		syncCrown()
-		connect(headerCrown:GetPropertyChangedSignal("Image"), syncCrown)
-		TweenService:Create(toggleCrown, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
-			Position = UDim2.new(0.5, 0, 0.5, -2),
-		}):Play()
+		sync(self.Visible, true)
+		self._pillSync = function(open) sync(open) end
 
-		local fsc = new("UIScale", { Parent = fb })
-		local fhit = hitZone(holder, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(TOG_SIZE + 20, TOG_SIZE + 20), ZIndex = 5 })
-		onHover(fhit,
-			function() tween(fsc, { Scale = 1.08 }, 0.15, Enum.EasingStyle.Quad) end,
-			function() tween(fsc, { Scale = 1 }, 0.2) end)
-		connect(fhit.MouseButton1Down, function() tween(fsc, { Scale = 0.9 }, 0.08) end)
-		connect(fhit.MouseButton1Up, function() tween(fsc, { Scale = IS_TOUCH and 1 or 1.08 }, 0.25, Enum.EasingStyle.Back) end)
-		draggable(fhit, holder, function()
+		Hooks[#Hooks + 1] = function(instant)
+			tween(base, { BackgroundColor3 = Theme.Accent:Lerp(BLACK, 0.58) }, instant and 0 or 0.35)
+			tween(led, { BackgroundColor3 = self.Visible and Theme.Accent or Theme.SubText }, instant and 0 or 0.35)
+		end
+
+		local hit = hitZone(holder, { ZIndex = 6 })
+		local hov = false
+		local function lift(y, t, style)
+			tween(face, { Position = UDim2.fromOffset(0, y) }, t, style or Enum.EasingStyle.Quint)
+		end
+		onHover(hit,
+			function() hov = true lift(-2, 0.14) end,
+			function() hov = false lift(0, 0.18) end)
+		connect(hit.MouseButton1Down, function() lift(THK - 1, 0.05, Enum.EasingStyle.Quad) end)
+		connect(hit.MouseButton1Up, function() lift(hov and -2 or 0, 0.28, Enum.EasingStyle.Back) end)
+		draggable(hit, holder, function()
 			self:Toggle()
-			pulse()
-			local s = holder.AbsoluteSize.X / TOG_SIZE
-			local c = Vector2.new(holder.AbsolutePosition.X + holder.AbsoluteSize.X / 2, holder.AbsolutePosition.Y + holder.AbsoluteSize.Y / 2)
-			FX.ring(c, Theme.Accent, 28 * s, 84 * s, 0.55, 0.18)
-			FX.burst(c, Theme.Accent, 5, 34 * s, { Size = 9 * s })
-			toggleCrown.Rotation = 0
-			tween(toggleCrown, { Rotation = 360 }, 0.5, Enum.EasingStyle.Quint)
+			FX.ripple(face, nil, Theme.Accent, { Radius = 12, Alpha = 0.78, Time = 0.55 })
+			crown.Rotation = 0
+			tween(crown, { Rotation = 360 }, 0.5, Enum.EasingStyle.Quint)
 			task.delay(0.55, function()
-				if toggleCrown.Parent then toggleCrown.Rotation = 0 end
+				if crown.Parent then crown.Rotation = 0 end
 			end)
 		end)
 	end
@@ -6254,7 +6258,7 @@ end
 Window:CreateSettingsTab({ Group = "ACCOUNT" })
 
 Window:LoadAutoConfig()
-Library:Notify({ Title = "ZystrixUI Tester", Content = "Ready. Press J or the round button to open/close.", Duration = 5, Icon = "crown" })
+Library:Notify({ Title = "ZystrixUI Tester", Content = "Ready. Press J or the bar at the top to open/close.", Duration = 5, Icon = "crown" })
 end
 
 local okDemo, errDemo = pcall(RunDemo)
