@@ -4437,9 +4437,11 @@ function Library:Confirm(o)
 		end)
 		textH = (okS and sz) and (math.ceil(sz.Y) + 3) or (math.ceil(#body / 46) * 15 + 3)
 	end
-	local titleY = topH + 20
-	local bodyY = titleY + 32
-	local btnY = textH > 0 and (bodyY + textH + 18) or (titleY + 40)
+	local tagY = topH + 18
+	local titleY = tagY + 16
+	local perfY = titleY + 32
+	local bodyY = perfY + 16
+	local btnY = textH > 0 and (bodyY + textH + 18) or (perfY + 18)
 	local H = btnY + 44 + 18
 
 	local vp = viewport()
@@ -4459,23 +4461,22 @@ function Library:Confirm(o)
 
 	local slab = new("Frame", {
 		Name = "Slab", Position = UDim2.fromOffset(0, T), Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = danger and Color3.fromRGB(70, 15, 22) or tone:Lerp(BLACK, 0.82),
+		BackgroundColor3 = danger and Color3.fromRGB(70, 15, 22) or Theme.Card:Lerp(BLACK, 0.6),
 		BackgroundTransparency = 1, ZIndex = 1, Parent = root,
 	})
 	corner(slab, 16)
 	local slabStroke = new("UIStroke", {
-		Color = danger and RED:Lerp(BLACK, 0.45) or tone:Lerp(BLACK, 0.7), Thickness = 1, Transparency = 1,
+		Color = danger and RED:Lerp(BLACK, 0.45) or Theme.Stroke, Thickness = 1, Transparency = 1,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = slab,
 	})
 
 	local faceBox = new("Frame", { Name = "FaceBox", Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = root })
 	local card = new("CanvasGroup", {
-		Name = "Card", Size = UDim2.fromScale(1, 1), BackgroundColor3 = danger and Theme.Card or tone:Lerp(BLACK, 0.66),
-		GroupTransparency = 1, Active = true, ZIndex = 1, Parent = faceBox,
+		Name = "Card", Size = UDim2.fromScale(1, 1), Bg = "Card", GroupTransparency = 1, Active = true, ZIndex = 1, Parent = faceBox,
 	})
 	corner(card, 16)
-	gradient(card, 232)
-	local glowProps = { Size = UDim2.fromScale(1, 1), BackgroundTransparency = danger and 0.86 or 1, ZIndex = 1, Parent = card }
+	gradient(card, 225)
+	local glowProps = { Size = UDim2.fromScale(1, 1), BackgroundTransparency = danger and 0.86 or 0.82, ZIndex = 1, Parent = card }
 	if danger then glowProps.BackgroundColor3 = RED else glowProps.Bg = "Accent" end
 	local glowC = new("Frame", glowProps)
 	corner(glowC, 16)
@@ -4483,8 +4484,11 @@ function Library:Confirm(o)
 	local outline = new("Frame", { Name = "Outline", Size = UDim2.fromScale(1, 1), ZIndex = 3, Active = false, Parent = faceBox })
 	corner(outline, 16)
 	local outStroke = stroke(outline)
-	if not danger then outStroke.Color = tone:Lerp(WHITE, 0.08) end
 	outStroke.Transparency = 1
+	new("Frame", {
+		Position = UDim2.fromOffset(14, topH + 1), Size = UDim2.new(1, -28, 0, 1),
+		BackgroundColor3 = WHITE, BackgroundTransparency = 0.92, Parent = card,
+	})
 
 	local beltTw
 	if danger then
@@ -4504,6 +4508,14 @@ function Library:Confirm(o)
 		beltTw:Play()
 	end
 
+	local tagProps = {
+		Text = string.upper(tostring(o.Tag or (danger and "Warning" or "Confirm"))), Font = Enum.Font.Code, TextSize = 11,
+		Position = UDim2.fromOffset(20, tagY), Size = UDim2.fromOffset(W - 40 - 64, 12),
+		TextTruncate = Enum.TextTruncate.AtEnd, Parent = card,
+	}
+	if danger then tagProps.TextColor3 = RED else tagProps.Fg = "SubText" end
+	new("TextLabel", tagProps)
+
 	local tsize = 17
 	while tsize > 12 and textWidth(title, tsize, FONT_BOLD) > W - 42 do tsize -= 1 end
 	new("TextLabel", {
@@ -4511,9 +4523,18 @@ function Library:Confirm(o)
 		Size = UDim2.fromOffset(W - 40, 22), TextTruncate = Enum.TextTruncate.AtEnd, Parent = card,
 	})
 
+	local okC, cw = pcall(function()
+		return TextService:GetTextSize("- ", 10, Enum.Font.Code, Vector2.new(1000, 20)).X
+	end)
+	new("TextLabel", {
+		Text = string.rep("- ", math.floor((W - 40) / ((okC and cw and cw > 0) and cw or 11))), Font = Enum.Font.Code, TextSize = 10,
+		Fg = "SubText", TextTransparency = 0.55, TextWrapped = false, ClipsDescendants = true,
+		Position = UDim2.fromOffset(20, perfY), Size = UDim2.fromOffset(W - 40, 12), Parent = card,
+	})
+
 	if textH > 0 then
 		new("TextLabel", {
-			Text = body, TextSize = 12, Position = UDim2.fromOffset(20, bodyY), TextColor3 = danger and Theme.SubText or tone:Lerp(WHITE, 0.72),
+			Text = body, TextSize = 12, Fg = "SubText", Position = UDim2.fromOffset(20, bodyY),
 			Size = UDim2.fromOffset(W - 40, textH), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, Parent = card,
 		})
 	end
@@ -4525,13 +4546,13 @@ function Library:Confirm(o)
 		local base = new("Frame", {
 			Position = UDim2.fromOffset(x, 4), Size = UDim2.fromOffset(bw, 38), BackgroundColor3 = baseColor, Parent = btnRow,
 		})
-		corner(base, 13)
+		corner(base, 11)
 		faceProps.Position = UDim2.fromOffset(x, 0)
 		faceProps.Size = UDim2.fromOffset(bw, 38)
 		faceProps.ZIndex = 2
 		faceProps.Parent = btnRow
 		local face = new("TextButton", faceProps)
-		corner(face, 13)
+		corner(face, 11)
 
 		local avail = bw - 16 - (hint and 44 or 0)
 		local sz = 13
@@ -4576,16 +4597,10 @@ function Library:Confirm(o)
 		return face
 	end
 
-	local cancelRest = danger and Theme.Element or tone:Lerp(BLACK, 0.5)
-	local cancelOver = danger and Theme.Hover or tone:Lerp(BLACK, 0.38)
-	local cancel = makeKey(20, { BackgroundColor3 = cancelRest }, danger and Theme.Element:Lerp(BLACK, 0.5) or tone:Lerp(BLACK, 0.8), o.CancelText or "Cancel", { Fg = "Text" },
-		nil, Theme.Text,
-		function() return cancelRest end, function() return cancelOver end)
-	local cStroke = stroke(cancel)
-	if not danger then
-		cStroke.Color = tone:Lerp(WHITE, 0.12)
-		cStroke.Transparency = 0.72
-	end
+	local cancel = makeKey(20, { Bg = "Element" }, Theme.Element:Lerp(BLACK, 0.5), o.CancelText or "Cancel", { Fg = "Text" },
+		showHints and "Esc" or nil, Theme.Text,
+		function() return Theme.Element end, function() return Theme.Hover end)
+	stroke(cancel)
 
 	local okFace, okText = {}, {}
 	if danger then
@@ -4597,13 +4612,13 @@ function Library:Confirm(o)
 	end
 	local function okRest() return danger and RED or Theme.Accent end
 	local okb = makeKey(20 + bw + 12, okFace, tone:Lerp(BLACK, 0.5), o.ConfirmText or "Yes", okText,
-		nil, danger and WHITE or Theme.AccentText,
+		(showHints and not danger) and "Enter" or nil, danger and WHITE or Theme.AccentText,
 		okRest, function() return okRest():Lerp(WHITE, 0.14) end)
 
 	local bx0, by0 = W - 46, danger and 8 or 2
 	local badge = new("Frame", {
 		Name = "Badge", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(bx0, by0),
-		Size = UDim2.fromOffset(46, 50), Visible = false, ZIndex = 5,
+		Size = UDim2.fromOffset(46, 50), Visible = false, ZIndex = 5, Parent = root,
 	})
 	local bEdge = new("Frame", {
 		Position = UDim2.fromOffset(0, 4), Size = UDim2.fromOffset(46, 46), BackgroundColor3 = tone:Lerp(BLACK, 0.5), Parent = badge,
@@ -4804,7 +4819,7 @@ function Window:RequestClose()
 		ConfirmText = "Close UI",
 		CancelText = "Cancel",
 		Icon = "close",
-		Danger = false,
+		Danger = true,
 		Callback = function() Library:Unload() end,
 	})
 end
@@ -5231,10 +5246,10 @@ function Library:CreateWindow(opts)
 	self.SearchInfo = new("TextLabel", { Text = "", TextSize = 12, Fg = "SubText", Size = UDim2.new(1, 0, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 2, Parent = sHead })
 
 	if opts.ToggleButton ~= false then
-		local PH, THK, PAD = 38, 6, 9
+		local PH, THK, PAD = 36, 6, 9
 		local BLACK, WHITE = Color3.new(0, 0, 0), Color3.new(1, 1, 1)
 		local ttl = tostring(opts.Title or "ZystrixUI")
-		local PW = math.clamp(math.ceil(textWidth(ttl, 13, FONT_BOLD)) + 92, 150, 280)
+		local PW = math.clamp(math.ceil(textWidth(ttl, 12, FONT_BOLD)) + 120, 176, 270)
 		local PHT = PH + THK
 		local HH = PHT + PAD * 2
 		local holder = new("Frame", {
@@ -5247,7 +5262,7 @@ function Library:CreateWindow(opts)
 			Size = UDim2.fromOffset(PW, PHT), Parent = holder,
 		})
 		local shScale = new("UIScale", { Parent = shAnchor })
-		local sh = makeShadow(shAnchor, 19, { Steps = 3, Step = 2, Alpha = 0.05, Offset = 5 })
+		local sh = makeShadow(shAnchor, 12, { Steps = 3, Step = 2, Alpha = 0.05, Offset = 5 })
 		local stage = new("CanvasGroup", { Size = UDim2.fromScale(1, 1), Parent = holder })
 		local stScale = new("UIScale", { Parent = stage })
 		local root = new("Frame", {
@@ -5262,45 +5277,47 @@ function Library:CreateWindow(opts)
 				Position = UDim2.fromOffset(0, i * THK / 3), Size = UDim2.new(1, 0, 0, PH),
 				BackgroundColor3 = shade(0.34 + i * 0.1), ZIndex = 4 - i, Parent = root,
 			})
-			corner(f, 19)
+			corner(f, 12)
 			ext[i] = f
 		end
 
 		local face = new("Frame", { Size = UDim2.new(1, 0, 0, PH), Bg = "Card", ZIndex = 5, Parent = root })
-		corner(face, 19)
-		local ring = stroke(face, nil, 1.5)
-		local function ringColors()
-			local h, sat, v = Theme.Accent:ToHSV()
-			local alt = Color3.fromHSV((h + 0.14) % 1, math.clamp(sat, 0.4, 1), math.clamp(v + 0.1, 0, 1))
-			return ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Theme.Accent), ColorSequenceKeypoint.new(0.5, alt), ColorSequenceKeypoint.new(1, Theme.Accent),
-			})
-		end
-		local ringGrad = new("UIGradient", { Color = ringColors(), Parent = ring })
-		local faceGrad = gradient(face, 232)
-
-		for gx = 0, 1 do
-			local g = new("Frame", {
-				AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 16 + gx * 5, 0.5, 0), Size = UDim2.fromOffset(2, 12),
-				Bg = "SubText", BackgroundTransparency = 0.25, Parent = face,
-			})
-			corner(g, 1)
-		end
+		corner(face, 12)
+		stroke(face)
+		local faceGrad = gradient(face, 228)
 		new("Frame", {
-			AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 31, 0.5, 0), Size = UDim2.fromOffset(1, 18),
-			Bg = "Stroke", Parent = face,
+			Position = UDim2.fromOffset(12, 1), Size = UDim2.new(1, -24, 0, 1),
+			BackgroundColor3 = WHITE, BackgroundTransparency = 0.9, Parent = face,
 		})
-		local crown = makeIcon(face, "crown", 17, "Accent", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 42, 0.5, 0) })
+
+		local tile, crown = iconTile(face, "crown", 26, 15, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 7, 0.5, 0) })
+		local keyW = IS_TOUCH and 0 or (math.ceil(textWidth(self.ToggleKey.Name, 10, FONT_BOLD)) + 14)
+		local textW = keyW > 0 and -(42 + keyW + 18) or -52
 		new("TextLabel", {
-			Text = ttl, Font = FONT_BOLD, TextSize = 13, Fg = "Text", Position = UDim2.fromOffset(68, 0),
-			Size = UDim2.new(1, -84, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = face,
+			Text = ttl, Font = FONT_BOLD, TextSize = 12, Fg = "Text", Position = UDim2.fromOffset(42, 5),
+			Size = UDim2.new(1, textW, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd, Parent = face,
 		})
+		new("TextLabel", {
+			Text = IS_TOUCH and "Tap to open" or "Open menu", TextSize = 10, Fg = "SubText", Position = UDim2.fromOffset(42, 21),
+			Size = UDim2.new(1, textW, 0, 12), TextTruncate = Enum.TextTruncate.AtEnd, Parent = face,
+		})
+		if keyW > 0 then
+			local cap = new("Frame", {
+				AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0),
+				Size = UDim2.fromOffset(keyW, 20), Bg = "Element", Parent = face,
+			})
+			corner(cap, 6)
+			stroke(cap)
+			new("TextLabel", {
+				Text = self.ToggleKey.Name, Font = FONT_BOLD, TextSize = 10, Fg = "SubText",
+				TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), Parent = cap,
+			})
+		end
 
 		Hooks[#Hooks + 1] = function(instant)
 			for i, f in ipairs(ext) do
 				tween(f, { BackgroundColor3 = shade(0.34 + i * 0.1) }, instant and 0 or 0.35)
 			end
-			ringGrad.Color = ringColors()
 		end
 
 		local hov, tx, ty, cx, cy, ph, pp = false, 0, 0, 0, 0, 0, 0
@@ -5333,7 +5350,6 @@ function Library:CreateWindow(opts)
 				f.Position = UDim2.fromOffset(cx * 4.5 * ph * k, (i * THK / 3) * (1 + 0.4 * ph) * (1 - 0.75 * pp))
 			end
 			faceGrad.Rotation = 215 + cx * 28
-			ringGrad.Rotation = (t * 45) % 360
 		end)
 
 		local appearTok = 0
@@ -5379,7 +5395,7 @@ function Library:CreateWindow(opts)
 			tween(crown, { Rotation = 0 }, 0.7, Enum.EasingStyle.Back)
 			task.delay(0.32, function()
 				if appearTok == my and face.Parent then
-					FX.ripple(face, nil, Theme.Accent, { Radius = 19, Alpha = 0.8, Time = 0.6 })
+					FX.ripple(face, nil, Theme.Accent, { Radius = 12, Alpha = 0.8, Time = 0.6 })
 				end
 			end)
 		end
@@ -5417,7 +5433,7 @@ function Library:CreateWindow(opts)
 		connect(hit.MouseLeave, function() if not dragged then pressT = 0 end end)
 		draggable(hit, holder, function()
 			pressT = 0
-			FX.ripple(face, nil, Theme.Accent, { Radius = 19, Alpha = 0.78, Time = 0.55 })
+			FX.ripple(face, nil, Theme.Accent, { Radius = 12, Alpha = 0.78, Time = 0.55 })
 			tween(crown, { Rotation = 360 }, 0.5, Enum.EasingStyle.Quint)
 			task.delay(0.55, function()
 				if crown.Parent then crown.Rotation = 0 end
