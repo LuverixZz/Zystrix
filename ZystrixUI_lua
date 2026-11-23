@@ -1163,12 +1163,13 @@ do
 	end)
 end
 do
-	local NOTIFY_W, NOTIFY_OFF = 292, 380
-	local TEXT_X = 58
-	local TEXT_W = NOTIFY_W - TEXT_X - 16
+	local NOTIFY_W, NOTIFY_OFF = 300, 380
+	local TEXT_X = 64
+	local TITLE_W = NOTIFY_W - TEXT_X - 40
+	local BODY_W = NOTIFY_W - TEXT_X - 18
 	local THICK = Kit.Thick.Toast
 	local RAD = Kit.Radius.Toast
-	local WHITE, BLACK = Kit.White, Kit.Black
+	local BLACK = Kit.Black
 	local PLACES = {
 		BottomRight = { anchor = Vector2.new(1, 1), pos = UDim2.new(1, -16, 1, -20), h = Enum.HorizontalAlignment.Right, v = Enum.VerticalAlignment.Bottom, dx = 1, dy = 0, order = 1 },
 		BottomLeft = { anchor = Vector2.new(0, 1), pos = UDim2.new(0, 16, 1, -20), h = Enum.HorizontalAlignment.Left, v = Enum.VerticalAlignment.Bottom, dx = -1, dy = 0, order = 1 },
@@ -1187,6 +1188,13 @@ do
 		Name = "Notifications", Size = UDim2.fromOffset(NOTIFY_W, 520), ZIndex = Kit.Z.Toast, Parent = Gui,
 	})
 	local list = new("UIListLayout", { Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder, Parent = holder })
+	local holderScale = new("UIScale", { Parent = holder })
+	local function fitHolder()
+		local w = Gui.AbsoluteSize.X
+		if w > 0 then holderScale.Scale = math.clamp((w - 24) / NOTIFY_W, 0.6, 1) end
+	end
+	fitHolder()
+	connect(Gui:GetPropertyChangedSignal("AbsoluteSize"), fitHolder)
 	local function place() return PLACES[Library.NotifyPosition] or PLACES.BottomRight end
 	local function applyPlace()
 		local p = place()
@@ -1210,29 +1218,21 @@ do
 			if t then t.Dismiss() end
 		end
 	end
-	local function spr(s, target, dt)
-		s.v += ((target - s.x) * 150 - s.v * 17) * dt
-		s.x += s.v * dt
-	end
 	local function bodyHeight(txt)
 		if txt == "" then return 0 end
 		local okS, sz = pcall(function()
-			return TextService:GetTextSize(txt, 12, FONT, Vector2.new(TEXT_W, 10000))
+			return TextService:GetTextSize(txt, 12, FONT, Vector2.new(BODY_W, 10000))
 		end)
-		return (okS and sz) and (math.ceil(sz.Y) + 2) or (math.ceil(#txt / 32) * 15 + 2)
+		return (okS and sz) and (math.ceil(sz.Y) + 2) or (math.ceil(#txt / 34) * 15 + 2)
 	end
 	local function restack()
 		local n = #toasts
-		local p = place()
 		for i, e in ipairs(toasts) do
 			local depth = n - i
-			if p.order < 0 then depth = i - 1 end
 			e.depth = depth
-			if not e.dead and e.dim then
+			if not e.dead then
 				tween(e.dim, { BackgroundTransparency = e.hover and 1 or (1 - math.min(depth * 0.1, 0.3)) }, 0.25)
-				if e.ready and not e.hover then
-					tween(e.mover, { Position = UDim2.fromOffset(depth * 3 * (p.dx == 0 and 1 or p.dx), 0) }, 0.35, Enum.EasingStyle.Back)
-				end
+				tween(e.depthScale, { Scale = (e.hover or depth == 0) and 1 or (1 - math.min(depth, 3) * 0.015) }, 0.3, Enum.EasingStyle.Quint)
 			end
 		end
 	end
@@ -1281,14 +1281,15 @@ do
 		serial += 1
 		local P = place()
 		local tone = isTone and color or nil
+		local accent = tone or Theme.Accent
 		local icon = o.Icon or tIcon
 		local tagText = string.upper(tostring(o.Tag or (isTone and tLabel) or "Notice"))
 		local title = tostring(o.Title or "Notification")
 		local body = tostring(o.Content or "")
 		local bodyH = bodyHeight(body)
-		local H, progY, actY = 62, nil, nil
+		local H, progY, actY = 60, nil, nil
 		local function compute()
-			local cb = bodyH > 0 and (46 + bodyH) or 43
+			local cb = bodyH > 0 and (44 + bodyH) or 42
 			progY, actY = nil, nil
 			if hasProgress then
 				progY = cb + 8
@@ -1298,45 +1299,68 @@ do
 				actY = cb + 10
 				cb = actY + 30
 			end
-			H = math.max(62, cb + 14)
+			H = math.max(60, cb + 14)
 		end
 		compute()
 		local offIn = UDim2.fromOffset(P.dx * NOTIFY_OFF, P.dy * 70)
 		local slot = new("Frame", { Size = UDim2.new(1, 0, 0, 0), LayoutOrder = serial * P.order, Parent = holder })
 		local surf = Kit.surface(slot, {
 			Name = "Toast", Size = UDim2.new(1, 0, 0, H), Position = offIn, Radius = RAD, Thick = THICK, Tone = tone,
-			Shadow = { Steps = 3, Step = 4, Alpha = 0.07, Offset = 7 },
+			Canvas = true, Glow = 0.86, Shadow = { Steps = 3, Step = 4, Alpha = 0.07, Offset = 7 },
 		})
 		local mover, box, face, baseF = surf.Root, surf.Box, surf.Face, surf.Base
+		local depthScale = new("UIScale", { Name = "DepthScale", Parent = mover })
 		mover.Rotation = 6 * (P.dx == 0 and 1 or P.dx)
-		local timeProps = { Name = "Timer", Position = UDim2.fromOffset(0, THICK), Size = UDim2.new(1, 0, 0, H), ZIndex = 2, Parent = mover }
-		if tone then timeProps.BackgroundColor3 = tone else timeProps.Bg = "Accent" end
-		local timeBar = new("Frame", timeProps)
-		corner(timeBar, RAD)
+		face.GroupTransparency = 1
+		baseF.BackgroundTransparency = 1
+		surf.Stroke.Transparency = 1
+		local hit = new("TextButton", { Name = "Tap", Size = UDim2.fromScale(1, 1), Parent = face })
+		local rail = new("Frame", {
+			Name = "Rail", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(0, 4, 0, 0),
+			BackgroundColor3 = accent, Parent = face,
+		})
+		local tile = new("Frame", {
+			Name = "IconTile", Position = UDim2.fromOffset(18, 12), Size = UDim2.fromOffset(36, 36),
+			BackgroundColor3 = accent:Lerp(Theme.Card, 0.8), Parent = face,
+		})
+		corner(tile, 11)
+		local tileStroke = new("UIStroke", {
+			Color = accent, Transparency = 0.55, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = tile,
+		})
+		local ic = makeIcon(tile, icon, 18, nil, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		tintIcon(ic, accent, 0.01)
 		local tagLbl = Kit.tag(face, tagText, tone, {
-			Position = UDim2.fromOffset(TEXT_X, 13), Size = UDim2.fromOffset(TEXT_W - 36, 12),
+			Position = UDim2.fromOffset(TEXT_X, 12), Size = UDim2.fromOffset(TITLE_W - 44, 12),
 		})
 		local titleLbl = new("TextLabel", {
-			Text = title, Font = FONT_BOLD, TextSize = 14, Fg = "Text", Position = UDim2.fromOffset(TEXT_X, 25),
-			Size = UDim2.fromOffset(TEXT_W, 18), TextTruncate = Enum.TextTruncate.AtEnd, Parent = face,
+			Text = title, Font = FONT_BOLD, TextSize = 14, Fg = "Text", Position = UDim2.fromOffset(TEXT_X, 24),
+			Size = UDim2.fromOffset(TITLE_W, 18), TextTruncate = Enum.TextTruncate.AtEnd, Parent = face,
 		})
 		local function fitTitle()
 			local ts = 14
-			while ts > 11 and textWidth(titleLbl.Text, ts, FONT_BOLD) > TEXT_W - 2 do ts -= 1 end
+			while ts > 11 and textWidth(titleLbl.Text, ts, FONT_BOLD) > TITLE_W - 2 do ts -= 1 end
 			titleLbl.TextSize = ts
 		end
 		fitTitle()
 		local bodyLbl = new("TextLabel", {
 			Text = body, Fg = "SubText", TextSize = 12, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top,
-			Position = UDim2.fromOffset(TEXT_X, 46), Size = UDim2.fromOffset(TEXT_W, math.max(bodyH, 1)), Visible = bodyH > 0, Parent = face,
+			Position = UDim2.fromOffset(TEXT_X, 44), Size = UDim2.fromOffset(BODY_W, math.max(bodyH, 1)), Visible = bodyH > 0, Parent = face,
 		})
 		local metaLbl = new("TextLabel", {
-			Text = "", Font = FONT_BOLD, TextSize = 10, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 13),
+			Text = "", Font = FONT_BOLD, TextSize = 10, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(NOTIFY_W - 40, 12),
 			Size = UDim2.fromOffset(40, 12), TextXAlignment = Enum.TextXAlignment.Right, Visible = false, Parent = face,
 		})
 		if tone then metaLbl.TextColor3 = tone:Lerp(Theme.Text, 0.3) else bind(metaLbl, "TextColor3", "Accent") end
-		local circleCol = tone or Theme.Accent
-		local badge, bFace, bIcon = Kit.badge(face, icon, circleCol, 32, { Position = UDim2.fromOffset(30, 31) })
+		local closeBtn = new("TextButton", {
+			Name = "Close", AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(NOTIFY_W - 8, 6), Size = UDim2.fromOffset(28, 28),
+			Bg = "Hover", BackgroundTransparency = 1, Parent = face,
+		})
+		corner(closeBtn, 9)
+		local closeIcon = makeIcon(closeBtn, "close", 12, "SubText", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		local timerBar = new("Frame", {
+			Name = "Timer", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 3),
+			BackgroundColor3 = accent, BackgroundTransparency = 0.15, Visible = dur > 0, Parent = face,
+		})
 		local track, fill, fillLoop
 		local function setProgress(v)
 			if not fill then return end
@@ -1360,32 +1384,65 @@ do
 		end
 		if hasProgress then
 			track = new("Frame", {
-				Name = "Track", Position = UDim2.fromOffset(TEXT_X, progY), Size = UDim2.fromOffset(TEXT_W, 4), Bg = "Stroke", Parent = face,
+				Name = "Track", Position = UDim2.fromOffset(TEXT_X, progY), Size = UDim2.fromOffset(BODY_W, 4), Bg = "Stroke", Parent = face,
 			})
 			round(track)
-			local fp = { Name = "Fill", Size = UDim2.fromScale(0, 1), Parent = track }
-			if tone then fp.BackgroundColor3 = tone else fp.Bg = "Accent" end
-			fill = new("Frame", fp)
+			fill = new("Frame", { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = accent, Parent = track })
 			round(fill)
 		end
 		local entry = {
-			mover = mover, dim = nil, depth = 0, dead = false, hover = false, ready = false,
-			id = o.Id, sig = sig, count = 1,
+			mover = mover, depthScale = depthScale, depth = 0, dead = false, hover = false, ready = false,
+			dragging = false, pressing = false, id = o.Id, sig = sig, count = 1,
 		}
-		local hoverN = 0
-		local st = { hover = false, press = false }
-		local sx, sy, sl = { x = 0, v = 0 }, { x = 0, v = 0 }, { x = 0, v = 0 }
-		local fillTw, loop
-		local dismiss, startTimer
-		local handle = {}
 		local dim = new("Frame", {
-			Name = "Dim", Size = UDim2.new(1, 0, 0, H), BackgroundColor3 = BLACK, BackgroundTransparency = 1, ZIndex = 5, Parent = mover,
+			Name = "Dim", Size = UDim2.fromScale(1, 1), BackgroundColor3 = BLACK, BackgroundTransparency = 1, ZIndex = 5, Parent = box,
 		})
 		corner(dim, RAD)
 		entry.dim = dim
-		local hit = new("TextButton", {
-			Name = "Tap", Size = UDim2.new(1, 0, 0, actY and (actY - 2) or H), ZIndex = 6, Parent = mover,
-		})
+		local hoverN = 0
+		local fillTw
+		local dragCons = {}
+		local dismiss, startTimer
+		local handle = {}
+		local function dropCons()
+			for _, c in ipairs(dragCons) do pcall(function() c:Disconnect() end) end
+			dragCons = {}
+		end
+		local function hoverEnter()
+			if entry.dead then return end
+			hoverN += 1
+			if hoverN > 1 then return end
+			entry.hover = true
+			if fillTw then fillTw:Pause() end
+			if entry.ready and not entry.pressing then
+				tween(box, { Position = UDim2.fromOffset(0, -2) }, 0.14, Enum.EasingStyle.Quint)
+				tween(surf.Stroke, { Color = accent }, 0.18)
+			end
+			tween(closeBtn, { BackgroundTransparency = 0.4 }, 0.15)
+			tintIcon(closeIcon, Theme.Text, 0.15)
+			restack()
+		end
+		local function hoverLeave()
+			if entry.dead then return end
+			hoverN = math.max(0, hoverN - 1)
+			if hoverN > 0 then return end
+			entry.hover = false
+			if fillTw and not entry.dragging then fillTw:Play() end
+			if entry.ready and not entry.pressing then
+				tween(box, { Position = UDim2.new() }, 0.2, Enum.EasingStyle.Quint)
+				tween(surf.Stroke, { Color = Theme.Stroke }, 0.25)
+			end
+			tween(closeBtn, { BackgroundTransparency = 1 }, 0.2)
+			tintIcon(closeIcon, Theme.SubText, 0.2)
+			restack()
+		end
+		local function watch(g)
+			if IS_TOUCH then return end
+			g.MouseEnter:Connect(hoverEnter)
+			g.MouseLeave:Connect(hoverLeave)
+		end
+		watch(hit)
+		watch(closeBtn)
 		local keys = {}
 		if #actions > 0 then
 			local gap = 8
@@ -1395,7 +1452,7 @@ do
 				total += widths[i]
 			end
 			total += gap * (#actions - 1)
-			local k = total > TEXT_W and (TEXT_W - gap * (#actions - 1)) / (total - gap * (#actions - 1)) or 1
+			local k = total > BODY_W and (BODY_W - gap * (#actions - 1)) / (total - gap * (#actions - 1)) or 1
 			local x = TEXT_X
 			for i, a in ipairs(actions) do
 				local w = math.floor(widths[i] * k)
@@ -1408,20 +1465,7 @@ do
 					if a.Callback then task.spawn(a.Callback, handle) end
 					if not a.Keep then dismiss() end
 				end)
-				key.Face.MouseEnter:Connect(function()
-					if entry.dead then return end
-					hoverN += 1
-					entry.hover = true
-					if fillTw then fillTw:Pause() end
-				end)
-				key.Face.MouseLeave:Connect(function()
-					if entry.dead then return end
-					hoverN = math.max(0, hoverN - 1)
-					if hoverN == 0 then
-						entry.hover = false
-						if fillTw then fillTw:Play() end
-					end
-				end)
+				watch(key.Face)
 				keys[i] = key
 				x += w + gap
 			end
@@ -1429,75 +1473,41 @@ do
 		local function layout(animate)
 			compute()
 			mover.Size = UDim2.new(1, 0, 0, H)
-			dim.Size = UDim2.new(1, 0, 0, H)
-			hit.Size = UDim2.new(1, 0, 0, actY and (actY - 2) or H)
 			if track then track.Position = UDim2.fromOffset(TEXT_X, progY) end
 			for _, key in ipairs(keys) do
 				key.Holder.Position = UDim2.fromOffset(key.Holder.Position.X.Offset, actY)
 			end
-			if fillTw == nil then timeBar.Size = UDim2.new(1, 0, 0, H) end
 			if animate then
 				tween(slot, { Size = UDim2.new(1, 0, 0, H + THICK) }, 0.25, Enum.EasingStyle.Quint)
 			end
 		end
 		layout(false)
-		local function wake()
-			if loop or entry.dead or not entry.ready then return end
-			loop = RunService.RenderStepped:Connect(function(dt)
-				if entry.dead or not face.Parent then
-					if loop then loop:Disconnect() loop = nil end
-					return
-				end
-				dt = math.min(dt, 1 / 20)
-				local tx, ty, tl = 0, 0, 0
-				if st.press then
-					tl = THICK - 1
-				elseif st.hover then
-					local m = UserInputService:GetMouseLocation()
-					local ap, as = mover.AbsolutePosition, mover.AbsoluteSize
-					if as.X > 0 and as.Y > 0 then
-						tx = math.clamp((m.X - (ap.X + as.X / 2)) / (as.X / 2), -1, 1)
-						ty = math.clamp((m.Y - (ap.Y + as.Y / 2)) / (as.Y / 2), -1, 1)
-					end
-					tl = -2
-				end
-				spr(sx, tx, dt)
-				spr(sy, ty, dt)
-				spr(sl, tl, dt)
-				box.Position = UDim2.fromOffset(snap(-sx.x * 3, 0.5), snap(sl.x - sy.x * 1.5, 0.5))
-				local bx, by = snap(sx.x * 2.5, 0.5), THICK + snap(sy.x * 1.5, 0.5)
-				baseF.Position = UDim2.fromOffset(bx, by)
-				timeBar.Position = UDim2.fromOffset(bx, by)
-				if not (st.hover or st.press)
-					and math.abs(sx.x) + math.abs(sy.x) + math.abs(sl.x) + math.abs(sx.v) + math.abs(sy.v) + math.abs(sl.v) < 0.01 then
-					box.Position = UDim2.new()
-					baseF.Position = UDim2.fromOffset(0, THICK)
-					timeBar.Position = UDim2.fromOffset(0, THICK)
-					sx.x, sx.v, sy.x, sy.v, sl.x, sl.v = 0, 0, 0, 0, 0, 0
-					loop:Disconnect()
-					loop = nil
-				end
-			end)
-		end
-		function dismiss()
+		function dismiss(dirX)
 			if entry.dead then return end
 			entry.dead = true
+			dropCons()
 			if fillTw then pcall(function() fillTw:Cancel() end) end
 			if fillLoop then pcall(function() fillLoop:Cancel() end) end
-			if loop then loop:Disconnect() loop = nil end
 			hit.Active = false
 			hit.Visible = false
 			for i = #toasts, 1, -1 do
 				if toasts[i] == entry then table.remove(toasts, i) end
 			end
 			restack()
-			tween(box, { Position = UDim2.fromOffset(0, THICK - 1) }, 0.06, Enum.EasingStyle.Quad)
-			task.delay(0.07, function()
-				if not mover.Parent then return end
-				tween(box, { Position = UDim2.fromOffset(26 * (P.dx == 0 and 1 or P.dx), THICK - 1) }, 0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-				tween(mover, { Position = offIn, Rotation = -5 * (P.dx == 0 and 1 or P.dx) }, 0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-			end)
-			task.delay(0.36, function()
+			local swipe = dirX ~= nil
+			if swipe then
+				tween(mover, { Position = UDim2.fromOffset(dirX * NOTIFY_OFF, 0), Rotation = 8 * dirX }, 0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+				tween(face, { GroupTransparency = 1 }, 0.24)
+			else
+				tween(box, { Position = UDim2.fromOffset(0, THICK - 1) }, 0.06, Enum.EasingStyle.Quad)
+				task.delay(0.07, function()
+					if not mover.Parent then return end
+					tween(box, { Position = UDim2.fromOffset(26 * (P.dx == 0 and 1 or P.dx), THICK - 1) }, 0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+					tween(mover, { Position = offIn, Rotation = -5 * (P.dx == 0 and 1 or P.dx) }, 0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+					tween(face, { GroupTransparency = 1 }, 0.26)
+				end)
+			end
+			task.delay(swipe and 0.28 or 0.36, function()
 				if not slot.Parent then return end
 				tween(slot, { Size = UDim2.new(1, 0, 0, 0) }, 0.2, Enum.EasingStyle.Quint)
 				task.delay(0.22, function()
@@ -1512,75 +1522,103 @@ do
 				pcall(function() fillTw:Cancel() end)
 				fillTw = nil
 			end
-			timeBar.Size = UDim2.new(1, 0, 0, H)
+			timerBar.Size = UDim2.new(1, 0, 0, 3)
+			timerBar.Visible = seconds ~= nil and seconds > 0
 			if seconds and seconds > 0 then
-				fillTw = TweenService:Create(timeBar, TweenInfo.new(seconds, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 0, H) })
+				fillTw = TweenService:Create(timerBar, TweenInfo.new(seconds, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 0, 3) })
 				local mine = fillTw
 				mine.Completed:Connect(function(state)
 					if state == Enum.PlaybackState.Completed and fillTw == mine then dismiss() end
 				end)
 				mine:Play()
-				if entry.hover then mine:Pause() end
+				if entry.hover or entry.dragging then mine:Pause() end
 			end
 		end
 		hit.InputBegan:Connect(function(i)
 			local ty = i.UserInputType
 			if ty ~= Enum.UserInputType.MouseButton1 and ty ~= Enum.UserInputType.Touch then return end
-			if entry.dead then return end
-			st.press = true
-			wake()
+			if entry.dead or not entry.ready or entry.pressing then return end
+			entry.pressing = true
 			local p0 = i.Position
-			local con
-			con = i.Changed:Connect(function()
-				local s = i.UserInputState
-				if s == Enum.UserInputState.End or s == Enum.UserInputState.Cancel then
-					con:Disconnect()
-					st.press = false
-					if s == Enum.UserInputState.End and not entry.dead and (i.Position - p0).Magnitude <= TAP_SLOP then
-						if o.OnClick then task.spawn(o.OnClick, handle) end
-						dismiss()
+			local dragging, moved, dx = false, false, 0
+			tween(box, { Position = UDim2.fromOffset(0, THICK - 2) }, 0.05, Enum.EasingStyle.Quad)
+			local function finish(state)
+				if not entry.pressing then return end
+				entry.pressing = false
+				dropCons()
+				if entry.dead then return end
+				if dragging then
+					entry.dragging = false
+					if math.abs(dx) > 80 then
+						dismiss(dx > 0 and 1 or -1)
 					else
-						wake()
+						tween(mover, { Position = UDim2.new(), Rotation = 0 }, 0.4, Enum.EasingStyle.Back)
+						tween(face, { GroupTransparency = 0 }, 0.2)
+						if hoverN == 0 and fillTw then fillTw:Play() end
+					end
+					return
+				end
+				tween(box, { Position = hoverN > 0 and UDim2.fromOffset(0, -2) or UDim2.new() }, 0.3, Enum.EasingStyle.Back)
+				if state == Enum.UserInputState.End and not moved then
+					if o.OnClick then task.spawn(o.OnClick, handle) end
+					dismiss()
+				end
+			end
+			dragCons[#dragCons + 1] = UserInputService.InputChanged:Connect(function(m)
+				if ty == Enum.UserInputType.Touch then
+					if m ~= i then return end
+				elseif m.UserInputType ~= Enum.UserInputType.MouseMovement then
+					return
+				end
+				local d = m.Position - p0
+				if d.Magnitude > TAP_SLOP then moved = true end
+				if not dragging then
+					if math.abs(d.X) > DRAG_SLOP and math.abs(d.X) > math.abs(d.Y) * 1.2 then
+						dragging = true
+						entry.dragging = true
+						if fillTw then fillTw:Pause() end
+						tween(box, { Position = UDim2.new() }, 0.1)
+					else
+						return
 					end
 				end
+				dx = d.X
+				mover.Position = UDim2.fromOffset(dx, 0)
+				mover.Rotation = math.clamp(dx * 0.025, -8, 8)
+				face.GroupTransparency = math.clamp(math.abs(dx) / 260, 0, 0.7)
+			end)
+			dragCons[#dragCons + 1] = i.Changed:Connect(function()
+				local s = i.UserInputState
+				if s == Enum.UserInputState.End or s == Enum.UserInputState.Cancel then finish(s) end
 			end)
 		end)
-		if not IS_TOUCH then
-			hit.MouseEnter:Connect(function()
-				if entry.dead then return end
-				hoverN += 1
-				entry.hover, st.hover = true, true
-				if fillTw then fillTw:Pause() end
-				tween(dim, { BackgroundTransparency = 1 }, 0.15)
-				wake()
-			end)
-			hit.MouseLeave:Connect(function()
-				if entry.dead then return end
-				hoverN = math.max(0, hoverN - 1)
-				st.hover = false
-				if hoverN == 0 then
-					entry.hover = false
-					if fillTw then fillTw:Play() end
-				end
-				restack()
-				wake()
-			end)
-		end
+		Kit.click(closeBtn, function() dismiss(P.dx ~= 0 and P.dx or 1) end, true)
 		local function recolor(typeName)
-			local c, ic, lbl, tn = Kit.tone(typeName)
+			local c, ic2, lbl, tn = Kit.tone(typeName)
 			local newTone = tn and c or nil
 			local col = newTone or Theme.Accent
-			bFace.BackgroundColor3 = col
-			badge.Edge.BackgroundColor3 = col:Lerp(BLACK, 0.5)
-			tintIcon(bIcon, Kit.onColor(col), 0.01)
-			timeBar.BackgroundColor3 = col
+			accent = col
+			rail.BackgroundColor3 = col
+			tile.BackgroundColor3 = col:Lerp(Theme.Card, 0.8)
+			tileStroke.Color = col
+			tintIcon(ic, col, 0.15)
+			timerBar.BackgroundColor3 = col
 			surf.GlowFrame.BackgroundColor3 = col
 			baseF.BackgroundColor3 = col:Lerp(BLACK, 0.62)
 			if fill then fill.BackgroundColor3 = col end
 			tagLbl.TextColor3 = newTone and newTone:Lerp(Theme.Text, 0.3) or Theme.SubText
 			metaLbl.TextColor3 = newTone and newTone:Lerp(Theme.Text, 0.3) or Theme.Accent
 			if tn then tagLbl.Text = lbl end
-			return ic
+			return ic2
+		end
+		local function setIcon(name)
+			local ent = Icons[name]
+			ic.Image = ent and ent[1] or tostring(name)
+			local g = ic:FindFirstChild("Glyph")
+			if g then
+				g.Text = ent and ent[2] or "*"
+				g.Visible = false
+			end
 		end
 		function handle:Dismiss() dismiss() end
 		function handle:SetProgress(v) setProgress(v) end
@@ -1597,22 +1635,16 @@ do
 				local nh = bodyHeight(body)
 				if nh ~= bodyH then
 					bodyH = nh
-					bodyLbl.Size = UDim2.fromOffset(TEXT_W, math.max(bodyH, 1))
+					bodyLbl.Size = UDim2.fromOffset(BODY_W, math.max(bodyH, 1))
 					relayout = true
 				end
 				bodyLbl.Visible = bodyH > 0
 			end
 			if u.Type ~= nil then
-				local ic = recolor(u.Type)
-				if u.Icon == nil and ic then
-					local entryIcon = Icons[ic]
-					if entryIcon then
-						bIcon.Image = entryIcon[1]
-						local g = bIcon:FindFirstChild("Glyph")
-						if g then g.Text = entryIcon[2] end
-					end
-				end
+				local ic2 = recolor(u.Type)
+				if u.Icon == nil and ic2 then setIcon(ic2) end
 			end
+			if u.Icon ~= nil then setIcon(u.Icon) end
 			if u.Tag ~= nil then tagLbl.Text = string.upper(tostring(u.Tag)) end
 			if u.Progress ~= nil then setProgress(u.Progress) end
 			if relayout then layout(true) end
@@ -1621,7 +1653,7 @@ do
 			elseif u.Content ~= nil or u.Title ~= nil then
 				if fillTw then startTimer(tonumber(o.Duration) or 4) end
 			end
-			FX.pop(badge, 0.8, 0.3)
+			FX.pop(tile, 0.8, 0.3)
 		end
 		handle.Id = o.Id
 		entry.handle = handle
@@ -1630,7 +1662,7 @@ do
 			metaLbl.Text = "x" .. entry.count
 			metaLbl.Visible = true
 			FX.pop(metaLbl, 1.4, 0.35)
-			FX.pop(badge, 0.75, 0.3)
+			FX.pop(tile, 0.75, 0.3)
 			if entry.ready then startTimer(seconds) end
 		end
 		table.insert(toasts, entry)
@@ -1638,21 +1670,49 @@ do
 		tween(slot, { Size = UDim2.new(1, 0, 0, H + THICK) }, 0.38, Enum.EasingStyle.Quint)
 		box.Position = UDim2.fromOffset(0, -9)
 		tween(mover, { Position = UDim2.new(), Rotation = 0 }, 0.55, Enum.EasingStyle.Back)
-		local edgeCol = tone or Theme.Accent
-		surf.Stroke.Color = edgeCol
-		tween(surf.Stroke, { Color = Theme.Stroke }, 1.0, Enum.EasingStyle.Quad)
-		task.delay(0.24, function()
+		tween(face, { GroupTransparency = 0 }, 0.25)
+		tween(baseF, { BackgroundTransparency = 0 }, 0.25)
+		surf.Stroke.Color = accent
+		tween(surf.Stroke, { Transparency = 0 }, 0.2)
+		task.delay(0.2, function()
+			if entry.dead or not face.Parent then return end
+			tween(surf.Stroke, { Color = Theme.Stroke }, 1.0, Enum.EasingStyle.Quad)
+		end)
+		task.delay(0.22, function()
 			if entry.dead or not face.Parent then return end
 			tween(box, { Position = UDim2.new() }, 0.42, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out)
-			badge.Rotation = -30
-			tween(badge, { Rotation = 0 }, 0.5, Enum.EasingStyle.Back)
-			FX.pop(badge, 0.5, 0.5)
+			tween(rail, { Size = UDim2.new(0, 4, 1, 0) }, 0.5, Enum.EasingStyle.Quint)
+			tile.Rotation = -25
+			tween(tile, { Rotation = 0 }, 0.5, Enum.EasingStyle.Back)
+			FX.pop(tile, 0.5, 0.5)
 		end)
-		task.delay(0.7, function()
+		task.delay(0.32, function()
+			if entry.dead or not tile.Parent then return end
+			local c = Vector2.new(tile.AbsolutePosition.X + tile.AbsoluteSize.X / 2, tile.AbsolutePosition.Y + tile.AbsoluteSize.Y / 2)
+			local sc = holderScale.Scale
+			FX.ring(c, accent, 20 * sc, 68 * sc, 0.6, 0.35)
+			if tLabel == "SUCCESS" and isTone then
+				FX.burst(c, accent, 6, 36 * sc, { Size = 8 * sc, Squash = 0.7 })
+			elseif tLabel == "ERROR" and isTone then
+				for k, dxs in ipairs({ -5, 4, -3, 2, 0 }) do
+					task.delay((k - 1) * 0.045, function()
+						if not entry.dead and not entry.dragging and mover.Parent then
+							tween(mover, { Position = UDim2.fromOffset(dxs, 0) }, 0.045, Enum.EasingStyle.Quad)
+						end
+					end)
+				end
+			elseif tLabel == "WARNING" and isTone then
+				for k, r in ipairs({ 14, -10, 6, 0 }) do
+					task.delay((k - 1) * 0.07, function()
+						if not entry.dead and tile.Parent then tween(tile, { Rotation = r }, 0.07, Enum.EasingStyle.Quad) end
+					end)
+				end
+			end
+		end)
+		task.delay(0.6, function()
 			if entry.dead then return end
 			entry.ready = true
 			restack()
-			if st.hover or st.press then wake() end
 		end)
 		if hasProgress then setProgress(o.Progress) end
 		startTimer(dur)
@@ -1720,6 +1780,7 @@ function Library:LoadConfig(name)
 end
 function Library:Unload()
 	if SliderLock.Active then pcall(SliderLock.Active) end
+	if Library._blur then pcall(function() Library._blur:Destroy() end) Library._blur = nil end
 	for _, c in ipairs(Library.Connections) do pcall(function() c:Disconnect() end) end
 	Library.Connections = {}
 	pcall(function() Gui:Destroy() end)
@@ -4908,6 +4969,8 @@ function Library:Prompt(o)
 	c.ConfirmText = o.ConfirmText or "Submit"
 	return Library:Confirm(c)
 end
+Library.DialogBlur = true
+function Library:SetDialogBlur(v) Library.DialogBlur = v and true or false end
 function Library:Confirm(o)
 	o = o or {}
 	if o.Remember and Library.ConfirmSkips[o.Remember] then
@@ -4921,8 +4984,12 @@ function Library:Confirm(o)
 	end
 	Library._confirm = true
 	closePopup()
-	local W, T = 332, Kit.Thick.Dialog
-	local WHITE, BLACK = Kit.White, Kit.Black
+	local W, T = 340, Kit.Thick.Dialog
+	local PADX = 28
+	local CW = W - PADX * 2
+	local BADGE = 54
+	local CY = 14
+	local BLACK = Kit.Black
 	local typeName = o.Type
 	if typeName == nil and (o.Danger or o.Icon == "close" or o.Icon == "trash") then typeName = "error" end
 	local color, tIcon, tLabel, isTone = Kit.tone(typeName)
@@ -4930,8 +4997,6 @@ function Library:Confirm(o)
 	local tone = isTone and color or nil
 	local accent = color
 	local icon = o.Icon or tIcon
-	local PERIOD = 22
-	local topH = danger and 12 or 0
 	local showHints = UserInputService.KeyboardEnabled and not IS_TOUCH
 	local single = o.CancelText == false
 	local hasInput = type(o.Input) == "table"
@@ -4943,42 +5008,52 @@ function Library:Confirm(o)
 	local textH = 0
 	if body ~= "" then
 		local okS, sz = pcall(function()
-			return TextService:GetTextSize(body, 12, FONT, Vector2.new(W - 40, 10000))
+			return TextService:GetTextSize(body, 12, FONT, Vector2.new(CW, 10000))
 		end)
-		textH = (okS and sz) and (math.ceil(sz.Y) + 3) or (math.ceil(#body / 46) * 15 + 3)
+		textH = (okS and sz) and (math.ceil(sz.Y) + 3) or (math.ceil(#body / 44) * 15 + 3)
 	end
-	local tagY = topH + 18
-	local titleY = tagY + 16
-	local perfY = titleY + 32
-	local bodyY = perfY + 16
-	local cursor = textH > 0 and (bodyY + textH + 12) or (perfY + 18)
-	local inputY, checkY
+	local tagY = 40
+	local titleY = tagY + 15
+	local bodyY = titleY + 32
+	local cursor = textH > 0 and (bodyY + textH + 16) or (titleY + 38)
+	local inputY, msgY, checkY
 	if hasInput then
 		inputY = cursor
-		cursor += 34 + 6
+		cursor += 38
+		msgY = cursor + 2
+		cursor += 18
 	end
-	local msgY = cursor - 4
-	if hasInput then cursor += 12 end
 	if o.Remember then
 		checkY = cursor
-		cursor += 26
+		cursor += 30
 	end
-	local btnY = cursor + 6
-	local H = btnY + 44 + 18
+	local btnY = cursor + 10
+	local H = btnY + 44 + 20
 	local vp = viewport()
-	local s = math.min(1, vp.X * 0.92 / W, vp.Y * 0.9 / (H + T + 24))
+	local s = math.min(1, vp.X * 0.92 / W, vp.Y * 0.9 / (H + T + 40))
 	local blocker = new("TextButton", {
 		Name = "DialogBlocker", Size = UDim2.fromScale(1, 1), BackgroundColor3 = BLACK, BackgroundTransparency = 1,
 		ZIndex = Kit.Z.Dialog, Parent = Gui,
 	})
+	local blur
+	if Library.DialogBlur then
+		pcall(function()
+			blur = Instance.new("BlurEffect")
+			blur.Name = "ZystrixDialogBlur"
+			blur.Size = 0
+			blur.Parent = game:GetService("Lighting")
+			Library._blur = blur
+			tween(blur, { Size = IS_TOUCH and 8 or 12 }, 0.3)
+		end)
+	end
 	local surf = Kit.surface(Gui, {
-		Name = "Dialog", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(W, H),
+		Name = "Dialog", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, CY), Size = UDim2.fromOffset(W, H),
 		ZIndex = Kit.Z.Dialog + 1, Radius = Kit.Radius.Dialog, Thick = T, Tone = tone, Canvas = true, Sink = true,
-		Glow = danger and 0.86 or 0.82, Shadow = { Steps = 5, Step = 5, Alpha = 0.05, Offset = 12 },
+		Glow = danger and 0.8 or 0.78, Shadow = { Steps = 5, Step = 5, Alpha = 0.05, Offset = 12 },
 	})
 	local root, slab, faceBox, card, outStroke = surf.Root, surf.Base, surf.Box, surf.Face, surf.Stroke
 	local shadow = surf.Shadow
-	local rootScale = new("UIScale", { Scale = s * 1.16, Parent = root })
+	local rootScale = new("UIScale", { Scale = s * 0.88, Parent = root })
 	shadow:Set(false)
 	slab.BackgroundTransparency = 1
 	local slabStroke = new("UIStroke", {
@@ -4987,55 +5062,48 @@ function Library:Confirm(o)
 	})
 	card.GroupTransparency = 1
 	outStroke.Transparency = 1
-	local beltTw
+	local glowGrad = surf.GlowFrame:FindFirstChildOfClass("UIGradient")
+	if glowGrad then glowGrad.Rotation = 90 end
+	local pulseTw
 	if danger then
-		local clip = new("Frame", {
-			Size = UDim2.new(1, 0, 0, topH), BackgroundColor3 = color:Lerp(BLACK, 0.82), ClipsDescendants = true, Parent = card,
+		pulseTw = TweenService:Create(surf.GlowFrame, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			BackgroundTransparency = 0.92,
 		})
-		local belt = new("Frame", { Size = UDim2.new(0, W + PERIOD * 3, 1, 0), Parent = clip })
-		for i = 0, math.ceil((W + PERIOD * 2) / PERIOD) do
-			new("Frame", {
-				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(i * PERIOD, topH / 2),
-				Size = UDim2.fromOffset(9, topH * 3), Rotation = 38, BackgroundColor3 = color, Parent = belt,
-			})
-		end
-		beltTw = TweenService:Create(belt, TweenInfo.new(1.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, false), {
-			Position = UDim2.fromOffset(-PERIOD, 0),
-		})
-		beltTw:Play()
+		pulseTw:Play()
 	end
 	Kit.tag(card, o.Tag or (isTone and tLabel) or (single and "Notice" or "Confirm"), tone, {
-		TextSize = 11, Position = UDim2.fromOffset(20, tagY), Size = UDim2.fromOffset(W - 40 - 64, 12),
+		TextSize = 11, Position = UDim2.fromOffset(PADX, tagY), Size = UDim2.fromOffset(CW, 12), TextXAlignment = Enum.TextXAlignment.Center,
 	})
-	local tsize = 17
-	while tsize > 12 and textWidth(title, tsize, FONT_BOLD) > W - 42 do tsize -= 1 end
+	local tsize = 18
+	while tsize > 12 and textWidth(title, tsize, FONT_BOLD) > CW - 2 do tsize -= 1 end
 	new("TextLabel", {
-		Text = title, Font = FONT_BOLD, TextSize = tsize, Fg = "Text", Position = UDim2.fromOffset(20, titleY),
-		Size = UDim2.fromOffset(W - 40, 22), TextTruncate = Enum.TextTruncate.AtEnd, Parent = card,
+		Text = title, Font = FONT_BOLD, TextSize = tsize, Fg = "Text", Position = UDim2.fromOffset(PADX, titleY),
+		Size = UDim2.fromOffset(CW, 24), TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, Parent = card,
 	})
-	Kit.perf(card, 20, perfY, W - 40)
 	if textH > 0 then
 		new("TextLabel", {
-			Text = body, TextSize = 12, Fg = "SubText", Position = UDim2.fromOffset(20, bodyY),
-			Size = UDim2.fromOffset(W - 40, textH), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, Parent = card,
+			Text = body, TextSize = 12, Fg = "SubText", Position = UDim2.fromOffset(PADX, bodyY),
+			Size = UDim2.fromOffset(CW, textH), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center,
+			TextYAlignment = Enum.TextYAlignment.Top, Parent = card,
 		})
 	end
+	Kit.perf(card, PADX, btnY - 14, CW)
 	local inputBox, msgLbl, inputStroke, inputWrap
 	if hasInput then
 		local io = o.Input
 		inputWrap = new("Frame", {
-			Name = "Input", Position = UDim2.fromOffset(20, inputY), Size = UDim2.fromOffset(W - 40, 34), Bg = "Element", Parent = card,
+			Name = "Input", Position = UDim2.fromOffset(PADX, inputY), Size = UDim2.fromOffset(CW, 36), Bg = "Element", Parent = card,
 		})
-		corner(inputWrap, 9)
+		corner(inputWrap, 10)
 		inputStroke = stroke(inputWrap)
 		gradient(inputWrap, 205)
 		inputBox = new("TextBox", {
-			Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -24, 1, 0), Fg = "Text", Ph = "SubText",
+			Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -28, 1, 0), Fg = "Text", Ph = "SubText",
 			PlaceholderText = io.Placeholder or "Type here...", Text = tostring(io.Default or ""), TextSize = 13, ClipsDescendants = true,
 			Parent = inputWrap,
 		})
 		msgLbl = new("TextLabel", {
-			Position = UDim2.fromOffset(22, msgY + 38), Size = UDim2.fromOffset(W - 44, 12), TextSize = 10, TextTransparency = 1,
+			Position = UDim2.fromOffset(PADX + 4, msgY), Size = UDim2.fromOffset(CW - 8, 12), TextSize = 10, TextTransparency = 1,
 			TextColor3 = Kit.Tones.error.Color, Text = "", Parent = card,
 		})
 		inputBox:GetPropertyChangedSignal("Text"):Connect(function()
@@ -5059,40 +5127,44 @@ function Library:Confirm(o)
 	end
 	local remember = false
 	if o.Remember then
-		local box = new("Frame", {
-			Position = UDim2.fromOffset(20, checkY + 2), Size = UDim2.fromOffset(16, 16), Bg = "Element", Parent = card,
+		local pill = new("Frame", {
+			Position = UDim2.fromOffset(PADX, checkY + 3), Size = UDim2.fromOffset(32, 18), Bg = "Hover", Parent = card,
 		})
-		corner(box, 5)
-		local cst = stroke(box)
-		local tick = makeIcon(box, "check", 11, nil, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
-		tick.ImageTransparency = 1
-		tintIcon(tick, Theme.AccentText, 0.01)
+		round(pill)
+		local pst = stroke(pill)
+		local knob = new("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 3, 0.5, 0), Size = UDim2.fromOffset(12, 12), Bg = "SubText", Parent = pill,
+		})
+		round(knob)
 		Kit.tag(card, "Don't ask again", nil, {
-			Position = UDim2.fromOffset(44, checkY + 3), Size = UDim2.fromOffset(W - 64, 14), TextSize = 11, Font = FONT,
+			Position = UDim2.fromOffset(PADX + 42, checkY + 5), Size = UDim2.fromOffset(CW - 42, 14), TextSize = 11, Font = FONT,
 		})
-		local zone = new("TextButton", { Position = UDim2.fromOffset(14, checkY - 2), Size = UDim2.fromOffset(W - 28, 24), Parent = card })
+		local zone = new("TextButton", { Position = UDim2.fromOffset(PADX - 6, checkY - 2), Size = UDim2.fromOffset(CW + 12, 26), Parent = card })
 		Kit.click(zone, function()
 			remember = not remember
-			tween(box, { BackgroundColor3 = remember and accent or Theme.Element }, 0.15)
-			tween(cst, { Color = remember and accent or Theme.Stroke }, 0.15)
-			tween(tick, { ImageTransparency = remember and 0 or 1 }, 0.15)
-			FX.pop(box, 1.25, 0.3)
+			tween(pill, { BackgroundColor3 = remember and accent or Theme.Hover }, 0.15)
+			tween(pst, { Color = remember and accent or Theme.Stroke }, 0.15)
+			tween(knob, {
+				Position = UDim2.new(0, remember and 17 or 3, 0.5, 0),
+				BackgroundColor3 = remember and Kit.onColor(accent) or Theme.SubText,
+			}, 0.28, Enum.EasingStyle.Back)
+			FX.pop(pill, 1.15, 0.3)
 		end, true)
 	end
 	local btnRow = new("Frame", { Name = "Buttons", Position = UDim2.fromOffset(0, btnY), Size = UDim2.fromOffset(W, 44), Parent = card })
 	local gap = 12
-	local bw = single and (W - 40) or (W - 40 - gap) / 2
+	local bw = single and CW or (CW - gap) / 2
 	local cancel
 	if not single then
 		cancel = Kit.key(btnRow, {
-			Text = o.CancelText or "Cancel", W = bw, H = 38, Radius = 11, Thick = 4, Variant = "neutral",
-			Hint = showHints and "Esc" or nil, Position = UDim2.fromOffset(20, 0),
+			Text = o.CancelText or "Cancel", W = bw, H = 40, Radius = 12, Thick = 4, Variant = "neutral",
+			Hint = showHints and "Esc" or nil, Position = UDim2.fromOffset(PADX, 0),
 		})
 	end
 	local baseText = o.ConfirmText or (single and "OK" or "Yes")
 	local okb = Kit.key(btnRow, {
-		Text = baseText, W = bw, H = 38, Radius = 11, Thick = 4, Variant = "primary",
-		Color = tone, Hint = (showHints and not danger) and "Enter" or nil, Position = UDim2.fromOffset(single and 20 or (20 + bw + gap), 0),
+		Text = baseText, W = bw, H = 40, Radius = 12, Thick = 4, Variant = "primary",
+		Color = tone, Hint = (showHints and not danger) and "Enter" or nil, Position = UDim2.fromOffset(single and PADX or (PADX + bw + gap), 0),
 	})
 	local lockUntil = countdown and (os.clock() + countdown) or nil
 	local function locked() return lockUntil ~= nil and os.clock() < lockUntil end
@@ -5110,8 +5182,8 @@ function Library:Confirm(o)
 			end
 		end)
 	end
-	local bx0, by0 = W - 46, danger and 8 or 2
-	local badge = Kit.badge(root, icon, accent, 46, { Name = "Badge", Position = UDim2.fromOffset(bx0, by0), Visible = false, ZIndex = 5 })
+	local bx0, by0 = W / 2, 0
+	local badge = Kit.badge(root, icon, accent, BADGE, { Name = "Badge", Position = UDim2.fromOffset(bx0, by0), Visible = false, ZIndex = 5 })
 	local closed, escCon, endCon, loopCon = false, nil, nil, nil
 	local touch, mouseDown = nil, false
 	local landed = false
@@ -5127,16 +5199,24 @@ function Library:Confirm(o)
 		blocker.Active = false
 		card.Active = false
 		if inputBox then inputBox:ReleaseFocus() end
-		if beltTw then pcall(function() beltTw:Cancel() end) end
+		if pulseTw then pcall(function() pulseTw:Cancel() end) end
 		tween(blocker, { BackgroundTransparency = 1 }, 0.2)
+		if blur then
+			local b = blur
+			pcall(function() tween(b, { Size = 0 }, 0.22) end)
+			task.delay(0.3, function()
+				if Library._blur == b then Library._blur = nil end
+				pcall(function() b:Destroy() end)
+			end)
+		end
 		task.delay(0.06, function()
 			if not root.Parent then return end
 			tween(card, { GroupTransparency = 1 }, 0.14)
 			tween(outStroke, { Transparency = 1 }, 0.14)
 			tween(slab, { BackgroundTransparency = 1 }, 0.14)
 			tween(slabStroke, { Transparency = 1 }, 0.14)
-			tween(root, { Position = UDim2.new(0.5, 0, 0.5, 18) }, 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-			tween(rootScale, { Scale = s * 0.94 }, 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+			tween(root, { Position = UDim2.new(0.5, 0, 0.5, CY + 18) }, 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+			tween(rootScale, { Scale = s * 0.92 }, 0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 			FX.scaleTo(badge, 0.01, 0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 			shadow:Fade(false, 0.16)
 		end)
@@ -5172,7 +5252,7 @@ function Library:Confirm(o)
 					for k, dx in ipairs({ -4, 3, -2, 0 }) do
 						task.delay((k - 1) * 0.04, function()
 							if not closed and inputWrap.Parent then
-								inputWrap.Position = UDim2.fromOffset(20 + dx, inputY)
+								inputWrap.Position = UDim2.fromOffset(PADX + dx, inputY)
 							end
 						end)
 					end
@@ -5287,7 +5367,7 @@ function Library:Confirm(o)
 	end)
 	root.Rotation = -2.5
 	tween(blocker, { BackgroundTransparency = 0.5 }, 0.25)
-	tween(rootScale, { Scale = s }, 0.42, Enum.EasingStyle.Quint)
+	tween(rootScale, { Scale = s }, 0.5, Enum.EasingStyle.Back)
 	tween(root, { Rotation = 0 }, 0.42, Enum.EasingStyle.Quint)
 	tween(card, { GroupTransparency = 0 }, 0.2)
 	tween(outStroke, { Transparency = 0 }, 0.25)
@@ -5301,7 +5381,7 @@ function Library:Confirm(o)
 			for k, dx in ipairs({ -5, 4, -3, 2, 0 }) do
 				task.delay((k - 1) * 0.04, function()
 					if not closed and root.Parent then
-						tween(root, { Position = UDim2.new(0.5, dx, 0.5, 0) }, 0.04, Enum.EasingStyle.Quad)
+						tween(root, { Position = UDim2.new(0.5, dx, 0.5, CY) }, 0.04, Enum.EasingStyle.Quad)
 					end
 				end)
 			end
@@ -5313,6 +5393,15 @@ function Library:Confirm(o)
 		badge.Rotation = -35
 		tween(badge, { Rotation = 0 }, 0.55, Enum.EasingStyle.Back)
 		FX.pop(badge, 0.2, 0.55)
+	end)
+	task.delay(0.42, function()
+		if closed or not badge.Parent then return end
+		local c = Vector2.new(badge.AbsolutePosition.X + badge.AbsoluteSize.X / 2, badge.AbsolutePosition.Y + badge.AbsoluteSize.Y / 2)
+		local sc = rootScale.Scale
+		FX.ring(c, accent, BADGE * 0.6 * sc, BADGE * 2.3 * sc, 0.7, 0.3)
+		if tLabel == "SUCCESS" and isTone then
+			FX.burst(c, accent, 8, 52 * sc, { Size = 9 * sc, Squash = 0.8 })
+		end
 	end)
 	if inputBox then
 		task.delay(0.35, function()
